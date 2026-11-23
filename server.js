@@ -8,7 +8,7 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { maxHttpBufferSize: 14 * 1024 * 1024 });
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "CHANGE_THIS_SECRET_BEFORE_PUBLIC_DEPLOYMENT";
 const DB_FILE = path.join(__dirname, "data.json");
@@ -16,7 +16,7 @@ const DB_FILE = path.join(__dirname, "data.json");
 app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-let db = { users: [], friendships: [], friendRequests: [], messages: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [] };
+let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [] };
 try { if (fs.existsSync(DB_FILE)) db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) }; } catch (e) {
   console.error("Could not read data.json. Starting with an empty database.", e.message);
 }
@@ -39,6 +39,7 @@ if (!Array.isArray(db.currencies)) db.currencies = [];
 if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
 if (!Array.isArray(db.customPages)) db.customPages = [];
 if (!Array.isArray(db.gifLibrary)) db.gifLibrary = [];
+if (!Array.isArray(db.callLogs)) db.callLogs = [];
 // Everyone starts with zero balance. The default currency is named Чекушня.
 if (!db.currencies.length) db.currencies.push({ id: "default", name: "Чекушня", logo: "", logoType: "image", createdAt: Date.now() });
 for (const user of db.users) {
@@ -75,7 +76,7 @@ function safeUser(user) {
 }
 function auth(req, res, next) {
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  try { req.user = jwt.verify(token, SECRET); next(); }
+  try { req.user = jwt.verify(token, SECRET); if(!db.users.some(u=>u.id===req.user.id)) return res.status(401).json({error:"Account no longer exists. Please sign in again."}); next(); }
   catch { res.status(401).json({ error: "Please sign in again." }); }
 }
 function requireAdmin(req, res, next) {
@@ -179,6 +180,33 @@ function emitToUser(userId, event, data) {
   }
 }
 
+// Owner-only account deletion. The owner account itself is protected.
+app.get("/api/admin/users", auth, requireAdmin, (req,res)=>{
+  res.json({users:db.users.map(u=>({id:u.id,username:u.username,displayName:u.displayName,role:u.role,createdAt:u.createdAt}))});
+});
+app.delete("/api/admin/users/:id", auth, requireAdmin, (req,res)=>{
+  if(req.admin.username!=="viva") return res.status(403).json({error:"Only the owner can delete accounts."});
+  const target=db.users.find(u=>u.id===req.params.id);
+  if(!target) return res.status(404).json({error:"Account not found."});
+  if(target.username==="viva" || target.id===req.admin.id) return res.status(400).json({error:"The owner account cannot be deleted."});
+  db.users=db.users.filter(u=>u.id!==target.id);
+  db.friendships=db.friendships.filter(f=>f.from!==target.id&&f.to!==target.id);
+  db.friendRequests=db.friendRequests.filter(r=>r.from!==target.id&&r.to!==target.id);
+  db.messages=db.messages.filter(m=>m.from!==target.id&&m.to!==target.id);
+  save(); res.json({ok:true});
+});
+// Moderation access is explicit and restricted to administrators; no call audio is stored.
+app.get("/api/admin/conversation", auth, requireAdmin, (req,res)=>{
+  const a=db.users.find(u=>u.username===String(req.query.a||"").toLowerCase());
+  const b=db.users.find(u=>u.username===String(req.query.b||"").toLowerCase());
+  if(!a||!b) return res.status(404).json({error:"Both usernames must exist."});
+  const messages=db.messages.filter(m=>(m.from===a.id&&m.to===b.id)||(m.from===b.id&&m.to===a.id)).slice(-300).map(m=>({...m,fromUsername:db.users.find(u=>u.id===m.from)?.username||"deleted",toUsername:db.users.find(u=>u.id===m.to)?.username||"deleted"}));
+  res.json({a:a.username,b:b.username,messages});
+});
+app.get("/api/admin/calls", auth, requireAdmin, (req,res)=>{
+  res.json({calls:db.callLogs.slice(-100).reverse().map(c=>({...c,fromUsername:db.users.find(u=>u.id===c.from)?.username||"deleted",toUsername:db.users.find(u=>u.id===c.to)?.username||"deleted"}))});
+});
+
 app.post("/api/register", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const displayName = String(req.body.displayName || username).trim().slice(0, 28);
@@ -241,14 +269,14 @@ app.get("/api/messages/:id", auth, (req, res) => {
 });
 
 io.use((socket, next) => {
-  try { socket.user = jwt.verify(socket.handshake.auth.token, SECRET); next(); }
+  try { socket.user = jwt.verify(socket.handshake.auth.token, SECRET); if(!db.users.some(u=>u.id===socket.user.id)) return next(new Error("Unauthorized")); next(); }
   catch { next(new Error("Unauthorized")); }
 });
 io.on("connection", socket => {
   socket.on("message:send", data => {
     const to = String(data.to || "");
     const text = String(data.text || "").trim().slice(0, 2000);
-    const media = data.media && typeof data.media.data === "string" && data.media.data.length <= 10*1024*1024 ? {type:String(data.media.type||"image"),name:String(data.media.name||"File").slice(0,100),data:data.media.data} : null;
+    const media = data.media && typeof data.media.data === "string" && data.media.data.length <= 12*1024*1024 && /^data:(image\/(png|jpeg|webp|gif)|video\/(mp4|webm|quicktime));base64,/i.test(data.media.data) ? {type:String(data.media.type||"image"),name:String(data.media.name||"File").slice(0,100),data:data.media.data} : null;
     if ((!text && !media) || !areFriends(socket.user.id, to)) return;
     const message = { id: require("crypto").randomUUID(), from: socket.user.id, to, text, media, createdAt: Date.now() };
     db.messages.push(message); if (db.messages.length > 10000) db.messages = db.messages.slice(-10000);
@@ -258,13 +286,25 @@ io.on("connection", socket => {
   });
   socket.on("call:invite", ({ to }) => {
     if (!areFriends(socket.user.id, to)) return;
+    const log={id:require("crypto").randomUUID(),from:socket.user.id,to,startedAt:Date.now(),endedAt:null,status:"ringing",mode:"audio"};
+    db.callLogs.push(log); if(db.callLogs.length>2000)db.callLogs=db.callLogs.slice(-2000); save();
+    socket.data.activeCallLog=log.id;
     emitToUser(to, "call:incoming", { from: socket.user.id, username: socket.user.username, mode: "audio" });
   });
   socket.on("call:signal", ({ to, signal }) => {
     if (!areFriends(socket.user.id, to)) return;
+    if(signal?.type==="description"){
+      const log=[...db.callLogs].reverse().find(c=>!c.endedAt&&((c.from===socket.user.id&&c.to===to)||(c.from===to&&c.to===socket.user.id)));
+      if(log&&log.status==="ringing"){log.status="connected";log.connectedAt=Date.now();save();}
+    }
     emitToUser(to, "call:signal", { from: socket.user.id, signal });
   });
-  socket.on("call:end", ({ to }) => emitToUser(to, "call:ended", { from: socket.user.id }));
+  socket.on("call:end", ({ to }) => {
+    const log=[...db.callLogs].reverse().find(c=>!c.endedAt&&((c.from===socket.user.id&&c.to===to)||(c.from===to&&c.to===socket.user.id)));
+    if(log&&!log.endedAt){log.endedAt=Date.now();if(log.status==="ringing")log.status="missed / declined";else log.status="ended";save();}
+    socket.data.activeCallLog=null;
+    emitToUser(to, "call:ended", { from: socket.user.id });
+  });
 });
 
 seedAdmin().then(() => {

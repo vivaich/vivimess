@@ -50,3 +50,8 @@ button,input,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit;
 @media(max-width:600px){.inline-form{align-items:stretch;flex-direction:column}.page-builder-panel{grid-column:auto}.admin-page-row{flex-wrap:wrap}}
 
 .audio-stage #remoteVideo.screen-live{position:relative;width:100%;height:100%;opacity:1;pointer-events:auto;object-fit:contain;background:#05080d}
+
+.admin-moderation-grid{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:14px}.admin-list,.moderation-messages{max-height:300px;overflow:auto;display:grid;gap:8px}.admin-user-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px;background:#202f40;border-radius:9px;font-size:12px}.admin-user-row button{padding:7px 10px}.moderation-message{display:grid;gap:3px;padding:9px;background:#202f40;border-radius:9px;font-size:12px;overflow-wrap:anywhere}.moderation-message small{color:#9baabd}.moderation-notice{padding:7px 11px;margin:0 12px 8px;border-radius:8px;background:#273546;color:#b9c8d8;font-size:11px}.studio-panel .admin-moderation-grid input{width:100%}@media(max-width:900px){.admin-moderation-grid{grid-template-columns:1fr}}
+
+/* Discord-like multi-attachment composer */
+.composer{align-items:center}.composer #messageInput{min-width:100px}.pending-files{display:flex;gap:8px;flex-wrap:wrap;padding:0 15px 12px}.pending-file{display:inline-flex;align-items:center;gap:8px;background:#24364a;border:1px solid #40556c;border-radius:10px;padding:7px 10px;color:#dce8f5;font-size:12px;max-width:260px;overflow-wrap:anywhere}.pending-file button{background:transparent;color:#ff8585;padding:0 3px;font-size:18px;line-height:1}.pending-files.hidden{display:none}
