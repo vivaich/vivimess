@@ -13,10 +13,10 @@ const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "CHANGE_THIS_SECRET_BEFORE_PUBLIC_DEPLOYMENT";
 const DB_FILE = path.join(__dirname, "data.json");
 
-app.use(express.json({ limit: "12mb" }));
+app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-let db = { users: [], friendships: [], messages: [], settings: null, customCss: "", currencies: [] };
+let db = { users: [], friendships: [], friendRequests: [], messages: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [] };
 try { if (fs.existsSync(DB_FILE)) db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) }; } catch (e) {
   console.error("Could not read data.json. Starting with an empty database.", e.message);
 }
@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
   panel: "#182331",
   showFriends: true,
   showCalls: true,
-  showVideo: true,
+  showVideo: false,
   showScreenShare: true
 };
 db.settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
@@ -36,6 +36,9 @@ if (!Array.isArray(db.users)) db.users = [];
 if (!Array.isArray(db.friendships)) db.friendships = [];
 if (!Array.isArray(db.messages)) db.messages = [];
 if (!Array.isArray(db.currencies)) db.currencies = [];
+if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
+if (!Array.isArray(db.customPages)) db.customPages = [];
+if (!Array.isArray(db.gifLibrary)) db.gifLibrary = [];
 // Everyone starts with zero balance. The default currency is named Чекушня.
 if (!db.currencies.length) db.currencies.push({ id: "default", name: "Чекушня", logo: "", logoType: "image", createdAt: Date.now() });
 for (const user of db.users) {
@@ -100,6 +103,27 @@ app.patch("/api/admin/code", auth, requireAdmin, (req, res) => {
 app.get("/api/admin/overview", auth, requireAdmin, (req, res) => {
   res.json({ users: db.users.length, messages: db.messages.length, friends: db.friendships.length });
 });
+// Admin-created sidebar pages. Content is declarative JSON; no arbitrary JavaScript is executed.
+app.get("/api/pages", auth, (req,res) => res.json({ pages: db.customPages.filter(p => p.published !== false) }));
+app.get("/api/admin/pages", auth, requireAdmin, (req,res) => res.json({ pages: db.customPages }));
+app.post("/api/admin/pages", auth, requireAdmin, (req,res) => {
+  const title = String(req.body.title || "New page").trim().slice(0,32) || "New page";
+  const slug = String(req.body.slug || (title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || ("page-"+Date.now().toString(36)))).slice(0,40);
+  if (db.customPages.some(p=>p.slug===slug)) return res.status(409).json({error:"A page with this name already exists."});
+  const page={id:require("crypto").randomUUID(),title,slug,elements:[],published:true,createdAt:Date.now()}; db.customPages.push(page); save(); res.json({page});
+});
+app.put("/api/admin/pages/:id", auth, requireAdmin, (req,res) => {
+  const page=db.customPages.find(p=>p.id===req.params.id); if(!page) return res.status(404).json({error:"Page not found."});
+  if(req.body.title!==undefined) page.title=String(req.body.title).trim().slice(0,32)||page.title;
+  if(req.body.published!==undefined) page.published=!!req.body.published;
+  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency"].includes(e.action)?e.action:"none",target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
+  save(); res.json({page});
+});
+app.delete("/api/admin/pages/:id", auth, requireAdmin, (req,res)=>{db.customPages=db.customPages.filter(p=>p.id!==req.params.id);save();res.json({ok:true});});
+app.post("/api/pages/:slug/action", auth, (req,res)=>{const page=db.customPages.find(p=>p.slug===req.params.slug&&p.published!==false);const el=page?.elements?.find(e=>e.id===req.body.elementId&&e.type==="button");if(!el)return res.status(404).json({error:"Button not found."});if(el.action!=="award-currency")return res.status(400).json({error:"This button has no reward action."});const c=db.currencies.find(x=>x.id===el.target);if(!c||!el.amount)return res.status(400).json({error:"Reward is not configured."});const user=db.users.find(u=>u.id===req.user.id);if(!user.balances)user.balances={};user.balances[c.id]=Number(user.balances[c.id]||0)+el.amount;save();res.json({ok:true,amount:el.amount,currency:c.name,balance:user.balances[c.id]});});
+app.post("/api/gifs", auth, (req,res)=>{const data=String(req.body.data||"");if(!/^data:image\/gif;base64,/.test(data)||data.length>10*1024*1024)return res.status(400).json({error:"Upload a GIF up to 7 MB."});const item={id:require("crypto").randomUUID(),owner:req.user.id,data,createdAt:Date.now()};db.gifLibrary.push(item);save();res.json({gif:{id:item.id,data:item.data}});});
+app.get("/api/gifs", auth, (req,res)=>res.json({gifs:db.gifLibrary.filter(g=>g.owner===req.user.id).map(g=>({id:g.id,data:g.data}))}));
+
 // Currency management: only an existing administrator can create/edit currencies or change balances.
 app.get("/api/currencies", auth, (req, res) => {
   const user = db.users.find(u => u.id === req.user.id);
@@ -192,25 +216,24 @@ app.patch("/api/profile", auth, (req, res) => {
 });
 app.get("/api/users", auth, (req, res) => {
   const q = String(req.query.q || "").toLowerCase().slice(0, 30);
-  const users = db.users.filter(u => u.id !== req.user.id && (u.username.includes(q) || u.displayName.toLowerCase().includes(q))).slice(0, 30).map(u => ({ ...safeUser(u), isFriend: areFriends(req.user.id, u.id) }));
+  const users = db.users.filter(u => u.id !== req.user.id && (u.username.includes(q) || u.displayName.toLowerCase().includes(q))).slice(0, 30).map(u => ({ ...safeUser(u), isFriend: areFriends(req.user.id, u.id), requestSent: db.friendRequests.some(r=>r.from===req.user.id&&r.to===u.id), requestReceived: db.friendRequests.some(r=>r.from===u.id&&r.to===req.user.id) }));
   res.json({ users });
 });
 app.post("/api/friends/:id", auth, (req, res) => {
-  const target = db.users.find(u => u.id === req.params.id);
-  if (!target || target.id === req.user.id) return res.status(404).json({ error: "User not found." });
-  if (!areFriends(req.user.id, target.id)) db.friendships.push({ from: req.user.id, to: target.id, createdAt: Date.now() });
-  save();
-  emitToUser(target.id, "friends:changed", {});
-  res.json({ ok: true });
+  const target=db.users.find(u=>u.id===req.params.id); if(!target||target.id===req.user.id)return res.status(404).json({error:"User not found."});
+  if(areFriends(req.user.id,target.id))return res.json({ok:true,alreadyFriends:true});
+  const reverse=db.friendRequests.find(r=>r.from===target.id&&r.to===req.user.id);
+  if(reverse){db.friendRequests=db.friendRequests.filter(r=>r!==reverse);db.friendships.push({from:req.user.id,to:target.id,createdAt:Date.now()});save();emitToUser(target.id,"friends:changed",{});return res.json({ok:true,accepted:true});}
+  if(!db.friendRequests.some(r=>r.from===req.user.id&&r.to===target.id))db.friendRequests.push({id:require("crypto").randomUUID(),from:req.user.id,to:target.id,createdAt:Date.now()});
+  save();emitToUser(target.id,"friend-request:new",{from:safeUser(db.users.find(u=>u.id===req.user.id))});res.json({ok:true,pending:true});
 });
+app.get("/api/friend-requests", auth, (req,res)=>{const incoming=db.friendRequests.filter(r=>r.to===req.user.id).map(r=>({...r,user:safeUser(db.users.find(u=>u.id===r.from)||{})}));const outgoing=db.friendRequests.filter(r=>r.from===req.user.id);res.json({incoming,outgoing});});
+app.post("/api/friend-requests/:id/accept", auth, (req,res)=>{const r=db.friendRequests.find(x=>x.id===req.params.id&&x.to===req.user.id);if(!r)return res.status(404).json({error:"Request not found."});db.friendRequests=db.friendRequests.filter(x=>x.id!==r.id);if(!areFriends(r.from,r.to))db.friendships.push({from:r.from,to:r.to,createdAt:Date.now()});save();emitToUser(r.from,"friends:changed",{});emitToUser(r.from,"friend-request:changed",{});res.json({ok:true});});
+app.delete("/api/friend-requests/:id", auth, (req,res)=>{const r=db.friendRequests.find(x=>x.id===req.params.id&&(x.to===req.user.id||x.from===req.user.id));if(!r)return res.status(404).json({error:"Request not found."});db.friendRequests=db.friendRequests.filter(x=>x.id!==r.id);save();emitToUser(r.from,"friend-request:changed",{});emitToUser(r.to,"friend-request:changed",{});res.json({ok:true});});
 app.delete("/api/friends/:id", auth, (req, res) => {
-  db.friendships = db.friendships.filter(f => !((f.from === req.user.id && f.to === req.params.id) || (f.from === req.params.id && f.to === req.user.id)));
-  save(); res.json({ ok: true });
+  db.friendships=db.friendships.filter(f=>!((f.from===req.user.id&&f.to===req.params.id)||(f.from===req.params.id&&f.to===req.user.id)));save();res.json({ok:true});
 });
-app.get("/api/friends", auth, (req, res) => {
-  const ids = new Set(db.friendships.filter(f => f.from === req.user.id || f.to === req.user.id).map(f => f.from === req.user.id ? f.to : f.from));
-  res.json({ users: db.users.filter(u => ids.has(u.id)).map(safeUser) });
-});
+app.get("/api/friends", auth, (req,res)=>{const ids=new Set(db.friendships.filter(f=>f.from===req.user.id||f.to===req.user.id).map(f=>f.from===req.user.id?f.to:f.from));res.json({users:db.users.filter(u=>ids.has(u.id)).map(safeUser)});});
 app.get("/api/messages/:id", auth, (req, res) => {
   if (!areFriends(req.user.id, req.params.id)) return res.status(403).json({ error: "Add this person as a friend to chat." });
   const messages = db.messages.filter(m => (m.from === req.user.id && m.to === req.params.id) || (m.from === req.params.id && m.to === req.user.id)).slice(-200);
@@ -225,16 +248,17 @@ io.on("connection", socket => {
   socket.on("message:send", data => {
     const to = String(data.to || "");
     const text = String(data.text || "").trim().slice(0, 2000);
-    if (!text || !areFriends(socket.user.id, to)) return;
-    const message = { id: require("crypto").randomUUID(), from: socket.user.id, to, text, createdAt: Date.now() };
+    const media = data.media && typeof data.media.data === "string" && data.media.data.length <= 10*1024*1024 ? {type:String(data.media.type||"image"),name:String(data.media.name||"File").slice(0,100),data:data.media.data} : null;
+    if ((!text && !media) || !areFriends(socket.user.id, to)) return;
+    const message = { id: require("crypto").randomUUID(), from: socket.user.id, to, text, media, createdAt: Date.now() };
     db.messages.push(message); if (db.messages.length > 10000) db.messages = db.messages.slice(-10000);
     save();
     socket.emit("message:new", message);
     emitToUser(to, "message:new", message);
   });
-  socket.on("call:invite", ({ to, mode }) => {
+  socket.on("call:invite", ({ to }) => {
     if (!areFriends(socket.user.id, to)) return;
-    emitToUser(to, "call:incoming", { from: socket.user.id, username: socket.user.username, mode: mode === "video" ? "video" : "audio" });
+    emitToUser(to, "call:incoming", { from: socket.user.id, username: socket.user.username, mode: "audio" });
   });
   socket.on("call:signal", ({ to, signal }) => {
     if (!areFriends(socket.user.id, to)) return;

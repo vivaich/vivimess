@@ -1,32 +1,23 @@
-VIVIMESS — CREATOR STUDIO BUILD
+ViviMess 1.1.0 — update package
 
-Run locally:
-1. Install Node.js LTS.
-2. Open this folder in VS Code.
-3. Open Terminal > New Terminal.
-4. Run: npm install
-5. Run: npm start
-6. Visit http://localhost:3000
+Included in this update:
+- Creator Studio: create custom sidebar tabs, rename and delete them.
+- Visual page builder: add text, buttons, images, videos and cards; upload image/video blocks; reorder blocks by dragging; adjust width, text color and corner radius.
+- Safe button actions: open another custom tab or award a configured currency amount. Arbitrary JavaScript execution is intentionally not enabled.
+- Friend requests: sending a request no longer adds a friend immediately; the recipient must accept.
+- Chat attachments: send photos and videos; personal GIF collection lets each user upload GIFs and send them in chats.
+- Voice-only calls: camera controls removed; microphone mute and screen sharing remain.
+- Startup splash: the login/registration form is hidden while a saved session is checked to prevent a flash on reload.
+- Profile keeps the existing unique username and editable display Name; PNG/JPG/WEBP/GIF avatar upload remains available.
 
-OWNER ACCOUNT (created automatically on first start)
-Username: viva
-Password: vivaich11
+Deploy update:
+1. Extract this ZIP.
+2. In GitHub repository vivimess choose Add file -> Upload files.
+3. Upload the contents of this folder, replacing files with the same names.
+4. Commit directly to the main branch. Render should deploy the latest commit automatically; if not, use Manual Deploy -> Deploy latest commit.
 
-SECURITY / ROLES
-- New accounts are regular users and start with 0 in every currency.
-- The viva account is seeded as the owner administrator.
-- Only administrators can create/edit currencies, change balances and manage roles.
-- The owner account viva cannot be demoted through the role form.
-- Admins can grant or revoke administrator role for other accounts.
-
-CURRENCY
-- Initial currency: Чекушня.
-- All user balances start at 0.
-- Admins can create additional currencies and upload an image, GIF or video logo (max 8 MB in the browser; server request limit 12 MB).
-- Admins can rename currencies and replace their logo.
-- Admins can add/subtract user balances.
-
-IMPORTANT
-This remains an early-stage project, not a production-ready public messenger.
-The JSON database and uploaded media are stored in data.json on the server filesystem. Free hosting platforms may erase local files after restarts/redeploys. Before public launch, connect persistent database and object storage, configure HTTPS/TURN, add rate limiting, secure owner credentials, backups and moderation.
-The existing message/call features are still basic; this build does not yet implement the full requested GIF/photo/video chat attachments, voice-note sending, stickers, quests or drag-and-drop page builder. Those need separate implementation and testing.
+Important limitations to know before inviting users:
+- This project currently stores accounts, messages, GIFs and uploaded media in data.json on the service filesystem. Render Free uses an ephemeral filesystem, so data can be lost after a restart/redeploy. A persistent database and object storage (for example PostgreSQL plus S3-compatible storage) should be connected before using this as a public community.
+- Voice calling uses WebRTC with a public STUN server. Some networks require a TURN relay, so calls/screen sharing may not connect on every network until TURN credentials are configured.
+- Uploaded images/videos/GIFs are limited to 7 MB each in the UI.
+- The visual page builder is a block editor with drag-to-reorder and width/color/radius controls; it is not yet a freeform pixel-position canvas.

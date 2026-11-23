@@ -1,14 +1,16 @@
 {
   "name": "vivimess",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "ViviMess - community chat with friends, calls and screen sharing",
+  "description": "ViviMess community messenger with friend requests, media chat, GIF collection, voice calls and visual custom pages",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "express": "^5.1.0",

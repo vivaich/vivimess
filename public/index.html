@@ -6,7 +6,8 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div id="auth" class="auth-wrap">
+<div id="bootSplash" class="boot-splash">Loading ViviMess…</div>
+<div id="auth" class="auth-wrap hidden">
   <div class="auth-card">
     <img class="auth-hat" src="/hat.png" alt="Green bucket hat"><p class="eyebrow">CREATOR COMMUNITY</p><h1>ViviMess</h1>
     <p class="muted">Messages, calls and screen sharing — all in one place.</p>
@@ -27,6 +28,8 @@
     <button class="nav" data-view="friends">♧ <span>Friends</span></button>
     <button class="nav" data-view="profile">◉ <span>My profile</span></button>
     <button class="nav hidden" id="studioNav" data-view="studio">✦ <span>Creator Studio</span></button>
+    <div id="customNav"></div>
+    <div id="customNav"></div>
     <div class="side-bottom"><div class="mini-user" id="miniUser"></div><button id="logout" class="nav">↪ <span>Sign out</span></button></div>
   </aside>
   <main class="main">
@@ -37,16 +40,16 @@
         <div class="panel conversation">
           <div id="emptyChat" class="empty"><div class="empty-icon">✦</div><h3>Your next conversation starts here</h3><p>Choose a friend on the left to send a message or start a call.</p></div>
           <div id="chatActive" class="hidden chat-active">
-            <div class="conversation-head"><div id="chatPerson" class="person"></div><div class="call-actions"><button id="audioCall" class="soft">☎ Voice</button><button id="videoCall" class="primary">▣ Video</button></div></div>
+            <div class="conversation-head"><div id="chatPerson" class="person"></div><div class="call-actions"><button id="audioCall" class="soft">☎ Voice call</button></div></div>
             <div id="messages" class="messages"></div>
-            <form id="messageForm" class="composer"><input id="messageInput" placeholder="Write a message..." maxlength="2000" autocomplete="off"><button class="primary" type="submit">Send ➤</button></form>
+            <form id="messageForm" class="composer"><input id="messageInput" placeholder="Write a message..." maxlength="2000" autocomplete="off"><input id="chatFile" type="file" accept="image/*,video/*" hidden><button type="button" id="attachBtn" class="soft" title="Photo or video">＋</button><button type="button" id="gifBtn" class="soft">GIF</button><button class="primary" type="submit">Send ➤</button></form><div id="gifPanel" class="gif-panel hidden"><div class="panel-head"><b>Your GIFs</b><label class="soft gif-upload">＋ Add GIF<input id="gifUpload" type="file" accept="image/gif" hidden></label><button id="closeGif" class="soft">Close</button></div><div id="gifGrid" class="gif-grid"></div></div>
           </div>
         </div>
       </div>
     </section>
     <section id="view-friends" class="view hidden">
       <div class="panel section-panel"><div class="panel-head"><div><h3>Find your people</h3><p class="muted">Search by username or display name.</p></div></div><input id="userSearch" class="search" placeholder="Search creators..."><div id="searchResults" class="user-grid"></div></div>
-      <div class="panel section-panel"><h3>Your friends</h3><div id="friendsGrid" class="user-grid"></div></div>
+      <div class="panel section-panel"><h3>Friend requests</h3><div id="friendRequests" class="user-grid"></div></div><div class="panel section-panel"><h3>Your friends</h3><div id="friendsGrid" class="user-grid"></div></div>
     </section>
     <section id="view-profile" class="view hidden">
       <div class="panel profile-panel"><div class="profile-banner"></div><div class="profile-content"><div class="avatar big" id="profileAvatar">V</div><h3 id="profileHeading">Your profile</h3><p class="muted">Make your creator profile yours.</p>
@@ -76,7 +79,6 @@
           <h3>Features</h3><p class="muted">Turn parts of the messenger on or off.</p>
           <div class="toggle-row"><div><b>Friends</b><small>Friend list and adding people</small></div><input id="featureFriends" type="checkbox"></div>
           <div class="toggle-row"><div><b>Calls</b><small>Voice calling</small></div><input id="featureCalls" type="checkbox"></div>
-          <div class="toggle-row"><div><b>Video calls</b><small>Camera during calls</small></div><input id="featureVideo" type="checkbox"></div>
           <div class="toggle-row"><div><b>Screen sharing</b><small>Share your screen in a call</small></div><input id="featureShare" type="checkbox"></div>
           <button id="saveFeatures" class="primary">Save features</button><p id="featureStatus" class="success"></p>
         </div>
@@ -111,6 +113,26 @@
           </form>
           <p id="accountAdminStatus" class="success"></p>
         </div>
+        <div class="panel studio-panel page-builder-panel">
+          <h3>Sidebar pages & visual builder</h3><p class="muted">Create new tabs and build pages from blocks. Drag blocks to reorder; edit width, color and corners. Buttons only run safe built-in actions.</p>
+          <form id="newPageForm" class="inline-form"><label>New tab name<input id="newPageTitle" placeholder="Quests, Shop, News…" maxlength="32" required></label><button class="primary">＋ Create tab</button></form>
+          <div id="adminPagesList" class="admin-pages-list"></div>
+          <div id="pageEditor" class="page-editor hidden"><div class="panel-head"><h4 id="editingPageTitle">Edit page</h4><button type="button" id="closePageEditor" class="soft">Close</button></div>
+            <label>Page name<input id="editPageTitle" maxlength="32"></label>
+            <div class="builder-tools"><button type="button" data-add-block="text" class="soft">＋ Text</button><button type="button" data-add-block="button" class="soft">＋ Button</button><button type="button" data-add-block="image" class="soft">＋ Image</button><button type="button" data-add-block="video" class="soft">＋ Video</button><button type="button" data-add-block="card" class="soft">＋ Card</button></div>
+            <div id="builderBlocks" class="builder-blocks"></div><button type="button" id="savePage" class="primary">Save page</button><p id="pageStatus" class="success"></p>
+          </div>
+        </div>
+        <div class="panel studio-panel page-builder-panel">
+          <h3>Sidebar pages & visual builder</h3><p class="muted">Create new tabs and build pages from blocks. Drag blocks to reorder; edit width, color and corners. Buttons only run safe built-in actions.</p>
+          <form id="newPageForm" class="inline-form"><label>New tab name<input id="newPageTitle" placeholder="Quests, Shop, News…" maxlength="32" required></label><button class="primary">＋ Create tab</button></form>
+          <div id="adminPagesList" class="admin-pages-list"></div>
+          <div id="pageEditor" class="page-editor hidden"><div class="panel-head"><h4 id="editingPageTitle">Edit page</h4><button type="button" id="closePageEditor" class="soft">Close</button></div>
+            <label>Page name<input id="editPageTitle" maxlength="32"></label>
+            <div class="builder-tools"><button type="button" data-add-block="text" class="soft">＋ Text</button><button type="button" data-add-block="button" class="soft">＋ Button</button><button type="button" data-add-block="image" class="soft">＋ Image</button><button type="button" data-add-block="video" class="soft">＋ Video</button><button type="button" data-add-block="card" class="soft">＋ Card</button></div>
+            <div id="builderBlocks" class="builder-blocks"></div><button type="button" id="savePage" class="primary">Save page</button><p id="pageStatus" class="success"></p>
+          </div>
+        </div>
         <div class="panel studio-panel">
           <h3>Site overview</h3><p class="muted">A quick look at your community.</p>
           <div class="stats-grid"><div><strong id="statUsers">—</strong><small>Accounts</small></div><div><strong id="statMessages">—</strong><small>Messages</small></div><div><strong id="statFriends">—</strong><small>Friend links</small></div></div>
@@ -123,8 +145,8 @@
 <div id="callModal" class="call-modal hidden">
   <div class="call-window">
     <div class="call-top"><div><span class="eyebrow">VIVIMESS LIVE</span><h3 id="callTitle">Call</h3></div><span class="live-tag"><i></i> LIVE</span></div>
-    <div class="video-stage"><video id="remoteVideo" autoplay playsinline></video><video id="localVideo" autoplay muted playsinline></video><div id="callHint" class="call-hint">Waiting for the other person…</div></div>
-    <div class="call-controls"><button id="muteBtn" class="soft">🎙 Mute</button><button id="cameraBtn" class="soft">▣ Camera</button><button id="shareBtn" class="soft">▧ Share screen</button><button id="hangupBtn" class="danger">End call</button></div>
+    <div class="video-stage audio-stage"><video id="remoteVideo" autoplay playsinline></video><div id="callHint" class="call-hint">Waiting for the other person…</div><div class="audio-call-avatar">☎</div></div>
+    <div class="call-controls"><button id="muteBtn" class="soft">🎙 Mute</button><button id="shareBtn" class="soft">▧ Share screen</button><button id="hangupBtn" class="danger">End call</button></div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
