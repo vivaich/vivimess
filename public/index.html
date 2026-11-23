@@ -50,7 +50,13 @@
     </section>
     <section id="view-profile" class="view hidden">
       <div class="panel profile-panel"><div class="profile-banner"></div><div class="profile-content"><div class="avatar big" id="profileAvatar">V</div><h3 id="profileHeading">Your profile</h3><p class="muted">Make your creator profile yours.</p>
-        <form id="profileForm" class="profile-form"><label>Display name<input id="profileName" maxlength="28"></label><label>Avatar image URL<input id="profileAvatarUrl" placeholder="https://..."></label><label>About you<textarea id="profileBio" maxlength="160" rows="3"></textarea></label><button class="primary">Save profile</button></form><p id="profileMessage" class="success"></p>
+        <form id="profileForm" class="profile-form">
+          <label>Username (login and account ID)<input id="profileUsername" readonly aria-readonly="true"></label>
+          <label>Name (shown to other users)<input id="profileName" maxlength="28" placeholder="Your display name"></label>
+          <label>Avatar from your computer <small class="muted">PNG, JPG, WEBP or animated GIF · up to 7 MB</small><input id="profileAvatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+          <label>About you<textarea id="profileBio" maxlength="160" rows="3"></textarea></label>
+          <button class="primary">Save profile</button>
+        </form><p id="profileMessage" class="success"></p>
       </div></div>
     </section>
     <section id="view-studio" class="view hidden">

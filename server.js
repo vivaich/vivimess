@@ -182,7 +182,12 @@ app.patch("/api/profile", auth, (req, res) => {
   if (!user) return res.status(404).json({ error: "Account not found." });
   if (req.body.displayName !== undefined) user.displayName = String(req.body.displayName).trim().slice(0, 28) || user.username;
   if (req.body.bio !== undefined) user.bio = String(req.body.bio).trim().slice(0, 160);
-  if (req.body.avatar !== undefined) user.avatar = String(req.body.avatar).trim().slice(0, 500);
+  if (req.body.avatar !== undefined) {
+    const avatar = String(req.body.avatar || "").trim();
+    if (avatar.length > 10 * 1024 * 1024) return res.status(400).json({ error: "Avatar is too large. Maximum 7 MB." });
+    if (avatar && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(avatar) && !/^https?:\/\//i.test(avatar)) return res.status(400).json({ error: "Choose a PNG, JPG, WEBP or GIF image." });
+    user.avatar = avatar;
+  }
   save(); res.json({ user: safeUser(user) });
 });
 app.get("/api/users", auth, (req, res) => {

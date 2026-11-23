@@ -37,7 +37,7 @@ async function boot() {
   await loadSiteSettings(); await loadCurrencies();
   $("miniUser").textContent=me.displayName+"  @"+me.username;
   $("profileHeading").textContent=me.displayName;
-  $("profileName").value=me.displayName;$("profileBio").value=me.bio||"";$("profileAvatarUrl").value=me.avatar||"";renderAvatar($("profileAvatar"),me);
+  $("profileUsername").value=me.username;$("profileName").value=me.displayName;$("profileBio").value=me.bio||"";$("profileAvatarFile").value="";renderAvatar($("profileAvatar"),me);
   connectSocket(); await loadFriends(); showView("chats");
 }
 async function loadSiteSettings(){
@@ -167,7 +167,8 @@ async function loadMessages(id){
 }
 function appendMessage(m){const host=$("messages");const el=document.createElement("div");el.className="bubble"+(m.from===me.id?" mine":"");el.textContent=m.text;const time=document.createElement("small");time.textContent=new Date(m.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});el.append(time);host.append(el);host.scrollTop=host.scrollHeight;}
 $("messageForm").onsubmit=e=>{e.preventDefault();const text=$("messageInput").value.trim();if(!text||!activeFriend)return;socket.emit("message:send",{to:activeFriend.id,text});$("messageInput").value="";};
-$("profileForm").onsubmit=async e=>{e.preventDefault();try{const data=await api("/api/profile",{method:"PATCH",body:JSON.stringify({displayName:$("profileName").value,bio:$("profileBio").value,avatar:$("profileAvatarUrl").value})});me=data.user;$("profileHeading").textContent=me.displayName;renderAvatar($("profileAvatar"),me);$("miniUser").textContent=me.displayName+"  @"+me.username;toast("Profile saved!");}catch(err){$("profileMessage").textContent=err.message;}};
+$("profileAvatarFile").onchange=async()=>{try{const file=$("profileAvatarFile").files[0];if(!file)return;if(!["image/png","image/jpeg","image/webp","image/gif"].includes(file.type))throw new Error("Choose a PNG, JPG, WEBP or GIF image.");if(file.size>7*1024*1024)throw new Error("Avatar must be smaller than 7 MB.");const preview=await fileAsDataUrl(file);renderAvatar($("profileAvatar"),{...me,avatar:preview});}catch(err){$("profileMessage").textContent=err.message;$("profileAvatarFile").value="";}};
+$("profileForm").onsubmit=async e=>{e.preventDefault();try{const file=$("profileAvatarFile").files[0];const avatar=file?await fileAsDataUrl(file):me.avatar||"";const data=await api("/api/profile",{method:"PATCH",body:JSON.stringify({displayName:$("profileName").value,bio:$("profileBio").value,avatar})});me=data.user;$("profileHeading").textContent=me.displayName;$("profileUsername").value=me.username;renderAvatar($("profileAvatar"),me);$("miniUser").textContent=me.displayName+"  @"+me.username;$("profileAvatarFile").value="";$("profileMessage").textContent="Profile saved!";toast("Profile saved!");}catch(err){$("profileMessage").textContent=err.message;}};
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
 $("audioCall").onclick=()=>startCall(activeFriend.id,"audio",false);
