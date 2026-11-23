@@ -2,7 +2,7 @@ const $ = id => document.getElementById(id);
 let token = localStorage.getItem("vm_token") || "";
 if(token){$("bootSplash").classList.remove("hidden");$("auth").classList.add("hidden");}else{$("bootSplash").classList.add("hidden");$("auth").classList.remove("hidden");}
 let me = null, socket = null, activeFriend = null, friends = [], authMode = "login", siteSettings = {};
-let pc = null, localStream = null, currentCallPeer = null, incomingOffer = null, callMode = "audio", pendingIce = [];
+let pc = null, localStream = null, currentCallPeer = null, incomingOffer = null, callMode = "audio", pendingIce = [], pendingIncomingCall = null;
 const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
 function toast(message) { const el=$("toast"); el.textContent=message; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),2600); }
@@ -129,7 +129,15 @@ function connectSocket(){
   socket.on("friends:changed",()=>{loadFriends();loadPeople($("userSearch").value);});
   socket.on("friend-request:new",data=>{toast("Friend request from @"+data.from.username);loadFriendRequests();});
   socket.on("friend-request:changed",loadFriendRequests);
-  socket.on("call:incoming",data=>{if(currentCallPeer){socket.emit("call:signal",{to:data.from,signal:{type:"busy"}});return;}if(confirm(data.username+" is calling. Accept?")){currentCallPeer=data.from;startCall(data.from,"audio",true);}else socket.emit("call:end",{to:data.from});});
+  socket.on("call:incoming",data=>{
+    if(currentCallPeer){socket.emit("call:signal",{to:data.from,signal:{type:"busy"}});return;}
+    // Use an in-app dialog. Browser confirm() is unreliable when called from socket events
+    // and may be suppressed, which used to auto-decline incoming calls.
+    pendingIncomingCall=data;
+    $("incomingCallTitle").textContent="Incoming voice call";
+    $("incomingCallText").textContent="@"+(data.username||"Someone")+" is calling you.";
+    $("incomingCallModal").classList.remove("hidden");
+  });
   socket.on("call:signal",handleSignal);
   socket.on("call:ended",()=>endCall(false));
 }
@@ -205,6 +213,20 @@ $("profileAvatarFile").onchange=async()=>{try{const file=$("profileAvatarFile").
 $("profileForm").onsubmit=async e=>{e.preventDefault();try{const file=$("profileAvatarFile").files[0];const avatar=file?await fileAsDataUrl(file):me.avatar||"";const data=await api("/api/profile",{method:"PATCH",body:JSON.stringify({displayName:$("profileName").value,bio:$("profileBio").value,avatar})});me=data.user;$("profileHeading").textContent=me.displayName;$("profileUsername").value=me.username;renderAvatar($("profileAvatar"),me);$("miniUser").textContent=me.displayName+"  @"+me.username;$("profileAvatarFile").value="";$("profileMessage").textContent="Profile saved!";toast("Profile saved!");}catch(err){$("profileMessage").textContent=err.message;}};
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
+$("acceptCallBtn").onclick=()=>{
+  const call=pendingIncomingCall;
+  if(!call)return;
+  pendingIncomingCall=null;
+  $("incomingCallModal").classList.add("hidden");
+  currentCallPeer=call.from;
+  startCall(call.from,"audio",true);
+};
+$("declineCallBtn").onclick=()=>{
+  const call=pendingIncomingCall;
+  pendingIncomingCall=null;
+  $("incomingCallModal").classList.add("hidden");
+  if(call&&socket)socket.emit("call:end",{to:call.from});
+};
 $("audioCall").onclick=()=>{if(activeFriend)startCall(activeFriend.id,"audio",false);};
 async function startCall(peer,mode,isAnswer){
   if(!peer)return;currentCallPeer=peer;callMode=mode;$("callModal").classList.remove("hidden");$("callTitle").textContent="Voice call";
@@ -253,7 +275,7 @@ $("hangupBtn").onclick=()=>endCall(true);
 function endCall(notify){
   if(notify&&currentCallPeer&&socket)socket.emit("call:end",{to:currentCallPeer});
   if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
-  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];
+  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
 }
 $("designForm").onsubmit=async e=>{
   e.preventDefault();try{
