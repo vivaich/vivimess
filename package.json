@@ -1,6 +1,6 @@
 {
   "name": "vivimess",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "ViviMess 2.0 community messenger with owner controls, moderator review, custom pages, media chat and WebRTC voice-call foundation",
   "main": "server.js",

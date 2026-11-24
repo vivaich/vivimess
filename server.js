@@ -121,11 +121,11 @@ app.put("/api/admin/pages/:id", auth, requireAdmin, (req,res) => {
   const page=db.customPages.find(p=>p.id===req.params.id); if(!page) return res.status(404).json({error:"Page not found."});
   if(req.body.title!==undefined) page.title=String(req.body.title).trim().slice(0,32)||page.title;
   if(req.body.published!==undefined) page.published=!!req.body.published;
-  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency"].includes(e.action)?e.action:"none",target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
+  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency","code"].includes(e.action)?e.action:"none",code:String(e.code||"").slice(0,12000),target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
   save(); res.json({page});
 });
 app.delete("/api/admin/pages/:id", auth, requireAdmin, (req,res)=>{db.customPages=db.customPages.filter(p=>p.id!==req.params.id);save();res.json({ok:true});});
-app.post("/api/pages/:slug/action", auth, (req,res)=>{const page=db.customPages.find(p=>p.slug===req.params.slug&&p.published!==false);const el=page?.elements?.find(e=>e.id===req.body.elementId&&e.type==="button");if(!el)return res.status(404).json({error:"Button not found."});if(el.action!=="award-currency")return res.status(400).json({error:"This button has no reward action."});const c=db.currencies.find(x=>x.id===el.target);if(!c||!el.amount)return res.status(400).json({error:"Reward is not configured."});const user=db.users.find(u=>u.id===req.user.id);if(!user.balances)user.balances={};user.balances[c.id]=Number(user.balances[c.id]||0)+el.amount;save();res.json({ok:true,amount:el.amount,currency:c.name,balance:user.balances[c.id]});});
+app.post("/api/pages/:slug/action", auth, (req,res)=>{const page=db.customPages.find(p=>p.slug===req.params.slug&&p.published!==false);const el=page?.elements?.find(e=>e.id===req.body.elementId&&e.type==="button");if(!el)return res.status(404).json({error:"Button not found."});if(el.action!=="award-currency"&&el.action!=="code")return res.status(400).json({error:"This button has no reward action."});const currencyId=el.action==="code"?String(req.body.currencyId||""):el.target;const amount=el.action==="code"?Number(req.body.amount):Number(el.amount);const c=db.currencies.find(x=>x.id===currencyId);if(!c||!Number.isFinite(amount)||amount<=0||amount>100000)return res.status(400).json({error:"Currency reward is not configured or amount is invalid."});const user=db.users.find(u=>u.id===req.user.id);if(!user.balances)user.balances={};user.balances[c.id]=Number(user.balances[c.id]||0)+amount;save();res.json({ok:true,amount,currency:c.name,balance:user.balances[c.id]});});
 app.post("/api/gifs", auth, (req,res)=>{const data=String(req.body.data||"");if(!/^data:image\/gif;base64,/.test(data)||data.length>10*1024*1024)return res.status(400).json({error:"Upload a GIF up to 7 MB."});const item={id:require("crypto").randomUUID(),owner:req.user.id,data,createdAt:Date.now()};db.gifLibrary.push(item);save();res.json({gif:{id:item.id,data:item.data}});});
 app.get("/api/gifs", auth, (req,res)=>res.json({gifs:db.gifLibrary.filter(g=>g.owner===req.user.id).map(g=>({id:g.id,data:g.data}))}));
 
@@ -157,6 +157,13 @@ app.patch("/api/admin/currencies/:id", auth, requireAdmin, (req, res) => {
     c.logoType = ["image","gif","video"].includes(req.body.logoType) ? req.body.logoType : "image";
   }
   save(); res.json({currency:c});
+});
+app.delete("/api/admin/currencies/:id", auth, requireAdmin, (req,res)=>{
+  const exists=db.currencies.some(c=>c.id===req.params.id); if(!exists)return res.status(404).json({error:"Currency not found."});
+  db.currencies=db.currencies.filter(c=>c.id!==req.params.id);
+  for(const user of db.users){if(user.balances)delete user.balances[req.params.id];}
+  for(const page of db.customPages)for(const el of page.elements||[])if(el.target===req.params.id){el.target="";el.amount=0;}
+  save();res.json({ok:true});
 });
 app.post("/api/admin/balance", auth, requireAdmin, (req, res) => {
   const target = db.users.find(u => u.username === String(req.body.username || "").trim().toLowerCase());

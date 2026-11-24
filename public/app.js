@@ -5,6 +5,43 @@ let me = null, socket = null, activeFriend = null, friends = [], authMode = "log
 let pc = null, localStream = null, currentCallPeer = null, incomingOffer = null, callMode = "audio", pendingIce = [], pendingIncomingCall = null;
 const CALL_PREFS_KEY="vm_call_preferences";
 let callPrefs=JSON.parse(localStorage.getItem(CALL_PREFS_KEY)||"{}");
+const SOUND_PREFS_KEY="vm_sound_preferences";
+let soundPrefs={calls:true,messages:true,...JSON.parse(localStorage.getItem(SOUND_PREFS_KEY)||"{}")};
+let ringtoneTimer=null, ringtoneStep=0, screenStream=null, screenSender=null;
+let soundContext=null;
+function playUiTone(kind="message"){
+  const enabled=kind==="message"?soundPrefs.messages:soundPrefs.calls;
+  if(!enabled)return;
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx)return;
+    soundContext=soundContext||new Ctx();
+    if(soundContext.state==="suspended")soundContext.resume().catch(()=>{});
+    const now=soundContext.currentTime;
+    const notes=kind==="ring"?[660,880]:kind==="outgoing"?[480]:[740];
+    notes.forEach((freq,i)=>{
+      const osc=soundContext.createOscillator(),gain=soundContext.createGain();
+      osc.type="sine";osc.frequency.value=freq;
+      const start=now+i*.14;
+      gain.gain.setValueAtTime(.0001,start);
+      gain.gain.exponentialRampToValueAtTime(kind==="ring"?.10:.055,start+.025);
+      gain.gain.exponentialRampToValueAtTime(.0001,start+.19);
+      osc.connect(gain);gain.connect(soundContext.destination);
+      osc.start(start);osc.stop(start+.21);
+    });
+  }catch(e){console.debug("UI sound unavailable",e);}
+}
+function startRingtone(kind="ring"){
+  stopRingtone();if(!soundPrefs.calls)return;
+  playUiTone(kind);
+  ringtoneTimer=setInterval(()=>playUiTone(kind),kind==="ring"?1250:1900);
+}
+function stopRingtone(){if(ringtoneTimer){clearInterval(ringtoneTimer);ringtoneTimer=null;}}
+function saveSoundPrefs(){
+  localStorage.setItem(SOUND_PREFS_KEY,JSON.stringify(soundPrefs));
+  if($("soundCalls"))$("soundCalls").checked=soundPrefs.calls;
+  if($("soundMessages"))$("soundMessages").checked=soundPrefs.messages;
+}
 function makeIceConfig(){const iceServers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}];if(callPrefs.turnUrl){iceServers.push({urls:callPrefs.turnUrl.split(/[,\s]+/).filter(Boolean),username:callPrefs.turnUsername||"",credential:callPrefs.turnPassword||""});}return {iceServers,iceTransportPolicy:"all"};}
 
 function toast(message) { const el=$("toast"); el.textContent=message; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),2600); }
@@ -92,6 +129,7 @@ async function loadCurrencies(){
       const preview=c.logoType==="video"?`<video src="${c.logo}" autoplay muted loop playsinline></video>`:c.logo?`<img src="${c.logo}" alt="">`:`<span>◈</span>`;
       row.innerHTML=`<div class="currency-logo">${preview}</div><div class="currency-meta"><b>${escapeHtml(c.name)}</b><small>Balance: ${Number(c.balance||0)}</small></div><button class="soft" data-edit="${c.id}">Edit</button>`;
       row.querySelector("button").onclick=()=>editCurrency(c);
+      if(c.id!=="default"){const del=document.createElement("button");del.className="danger";del.textContent="Delete";del.onclick=async()=>{if(confirm(`Delete currency “${c.name}” and remove all user balances in it?`)){try{await api("/api/admin/currencies/"+c.id,{method:"DELETE"});await loadCurrencies();toast("Currency deleted.");}catch(e){toast(e.message);}}};row.append(del);}
       list.append(row);
     });}
     const select=$("balanceCurrency");
@@ -122,13 +160,13 @@ if(currencyForm)currencyForm.onsubmit=async e=>{
 const roleForm=$("roleForm");
 if(roleForm)roleForm.onsubmit=async e=>{e.preventDefault();try{await api("/api/admin/roles",{method:"POST",body:JSON.stringify({username:$("roleUsername").value,role:$("roleValue").value})});$("accountAdminStatus").textContent="Permissions updated."; }catch(err){$("accountAdminStatus").textContent=err.message;}};
 const balanceForm=$("balanceForm");
-if(balanceForm)balanceForm.onsubmit=async e=>{e.preventDefault();try{await api("/api/admin/balance",{method:"POST",body:JSON.stringify({username:$("balanceUsername").value,currencyId:$("balanceCurrency").value,amount:Number($("balanceAmount").value)})});$("accountAdminStatus").textContent="Balance updated.";await loadCurrencies();}catch(err){$("accountAdminStatus").textContent=err.message;}};
+if(balanceForm)balanceForm.onsubmit=async e=>{e.preventDefault();try{await api("/api/admin/balance",{method:"POST",body:JSON.stringify({username:$("balanceUsername").value,currencyId:$("balanceCurrency").value,amount:Number($("balanceAmount").value)*($("balanceAction").value==="take"?-1:1)})});$("accountAdminStatus").textContent="Balance updated.";await loadCurrencies();}catch(err){$("accountAdminStatus").textContent=err.message;}};
 
 function connectSocket(){
   if(socket)socket.disconnect();
   socket=io({auth:{token}});
   socket.on("connect_error",()=>toast("Live connection unavailable. Refresh the page."));
-  socket.on("message:new",m=>{if(activeFriend&&(m.from===activeFriend.id||m.to===activeFriend.id))loadMessages(activeFriend.id);});
+  socket.on("message:new",m=>{if(m.from!==me?.id)playUiTone("message");if(activeFriend&&(m.from===activeFriend.id||m.to===activeFriend.id))loadMessages(activeFriend.id);});
   socket.on("friends:changed",()=>{loadFriends();loadPeople($("userSearch").value);});
   socket.on("friend-request:new",data=>{toast("Friend request from @"+data.from.username);loadFriendRequests();});
   socket.on("friend-request:changed",loadFriendRequests);
@@ -213,9 +251,15 @@ $("newPageForm").onsubmit=async e=>{e.preventDefault();try{const title=$("newPag
 function openPageEditor(page){editingPage=JSON.parse(JSON.stringify(page));$("pageEditor").classList.remove("hidden");$("editingPageTitle").textContent="Editing: "+page.title;$("editPageTitle").value=page.title;renderBuilderBlocks();}
 $("closePageEditor").onclick=()=>$("pageEditor").classList.add("hidden");
 document.querySelectorAll("[data-add-block]").forEach(b=>b.onclick=()=>{if(!editingPage)return;editingPage.elements.push({id:crypto.randomUUID(),type:b.dataset.addBlock,content:b.dataset.addBlock==="button"?"Click me":"New "+b.dataset.addBlock,label:"Button",action:"none",target:"",width:100,color:"#ffffff",radius:12});renderBuilderBlocks();});
-function renderBuilderBlocks(){const host=$("builderBlocks");host.innerHTML="";(editingPage?.elements||[]).forEach((el,i)=>{const card=document.createElement("div");card.className="builder-block";card.draggable=true;card.dataset.index=i;const title=document.createElement("b");title.textContent=(i+1)+" · "+el.type;const content=document.createElement("textarea");content.value=el.content;content.placeholder="Text or media URL / uploaded media";content.oninput=()=>el.content=content.value;const controls=document.createElement("div");if(el.type==="image"||el.type==="video"){const upload=document.createElement("input");upload.type="file";upload.accept=el.type==="image"?"image/*":"video/*";upload.onchange=async()=>{try{const f=upload.files[0];if(!f)return;if(f.size>7*1024*1024)throw new Error("Media must be smaller than 7 MB.");el.content=await fileAsDataUrl(f);content.value=el.content;}catch(e){toast(e.message);}};card.append(upload);}controls.className="builder-controls";const width=document.createElement("input");width.type="number";width.min=20;width.max=100;width.value=el.width;width.title="Width %";width.onchange=()=>el.width=Number(width.value);const color=document.createElement("input");color.type="color";color.value=el.color;color.oninput=()=>el.color=color.value;const radius=document.createElement("input");radius.type="number";radius.min=0;radius.max=32;radius.value=el.radius;radius.title="Corner radius";radius.onchange=()=>el.radius=Number(radius.value);controls.append("Width %",width,"Color",color,"Radius",radius);if(el.type==="button"){const label=document.createElement("input");label.placeholder="Button label";label.value=el.label;label.oninput=()=>el.label=label.value;const action=document.createElement("select");[["none","No action"],["open-page","Open another tab"],["award-currency","Award currency (admin only)"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;action.append(o);});action.value=el.action;action.onchange=()=>el.action=action.value;const target=document.createElement("input");target.placeholder=el.action==="award-currency"?"Currency ID":"Target tab slug";target.value=el.target;target.oninput=()=>el.target=target.value;const amount=document.createElement("input");amount.type="number";amount.min="0";amount.max="100000";amount.placeholder="Reward amount";amount.value=el.amount||0;amount.oninput=()=>el.amount=Number(amount.value);card.append(title,label,action,target,amount);}else card.append(title);card.append(content,controls);const remove=document.createElement("button");remove.className="danger";remove.textContent="Remove block";remove.onclick=()=>{editingPage.elements.splice(i,1);renderBuilderBlocks();};card.append(remove);card.ondragstart=e=>e.dataTransfer.setData("text/plain",String(i));card.ondragover=e=>e.preventDefault();card.ondrop=e=>{e.preventDefault();const from=Number(e.dataTransfer.getData("text/plain"));const [m]=editingPage.elements.splice(from,1);editingPage.elements.splice(i,0,m);renderBuilderBlocks();};host.append(card);});}
+function renderBuilderBlocks(){const host=$("builderBlocks");host.innerHTML="";(editingPage?.elements||[]).forEach((el,i)=>{const card=document.createElement("div");card.className="builder-block";card.draggable=true;card.dataset.index=i;const title=document.createElement("b");title.textContent=(i+1)+" · "+el.type;const content=document.createElement("textarea");content.value=el.content;content.placeholder="Text or media URL / uploaded media";content.oninput=()=>el.content=content.value;const controls=document.createElement("div");if(el.type==="image"||el.type==="video"){const upload=document.createElement("input");upload.type="file";upload.accept=el.type==="image"?"image/*":"video/*";upload.onchange=async()=>{try{const f=upload.files[0];if(!f)return;if(f.size>7*1024*1024)throw new Error("Media must be smaller than 7 MB.");el.content=await fileAsDataUrl(f);content.value=el.content;}catch(e){toast(e.message);}};card.append(upload);}controls.className="builder-controls";const width=document.createElement("input");width.type="number";width.min=20;width.max=100;width.value=el.width;width.title="Width %";width.onchange=()=>el.width=Number(width.value);const color=document.createElement("input");color.type="color";color.value=el.color;color.oninput=()=>el.color=color.value;const radius=document.createElement("input");radius.type="number";radius.min=0;radius.max=32;radius.value=el.radius;radius.title="Corner radius";radius.onchange=()=>el.radius=Number(radius.value);controls.append("Width %",width,"Color",color,"Radius",radius);if(el.type==="button"){const label=document.createElement("input");label.placeholder="Button label";label.value=el.label;label.oninput=()=>el.label=label.value;const action=document.createElement("select");[["none","No action"],["open-page","Open another tab"],["award-currency","Give currency"],["code","Run my JavaScript code"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;action.append(o);});action.value=el.action;action.onchange=()=>{el.action=action.value;renderBuilderBlocks();};const target=document.createElement("input");target.placeholder=el.action==="award-currency"?"Currency ID":"Target tab slug";target.value=el.target;target.oninput=()=>el.target=target.value;const amount=document.createElement("input");amount.type="number";amount.min="0";amount.max="100000";amount.placeholder="Reward amount";amount.value=el.amount||0;amount.oninput=()=>el.amount=Number(amount.value);card.append(title,label,action);if(el.action==="award-currency")card.append(target,amount);if(el.action==="code"){const code=document.createElement("textarea");code.rows=8;code.placeholder='// Available: vm.toast("Hello"); vm.navigate("tab-slug"); vm.giveCurrency("CURRENCY_ID", 10);';code.value=el.code||"";code.oninput=()=>el.code=code.value;const hint=document.createElement("small");hint.textContent="Code runs in an isolated sandbox. Available: vm.toast(text), vm.navigate(slug), vm.giveCurrency(currencyId, amount). No direct access to passwords, tokens, or page storage.";card.append(hint,code);}}else card.append(title);card.append(content,controls);const remove=document.createElement("button");remove.className="danger";remove.textContent="Remove block";remove.onclick=()=>{editingPage.elements.splice(i,1);renderBuilderBlocks();};card.append(remove);card.ondragstart=e=>e.dataTransfer.setData("text/plain",String(i));card.ondragover=e=>e.preventDefault();card.ondrop=e=>{e.preventDefault();const from=Number(e.dataTransfer.getData("text/plain"));const [m]=editingPage.elements.splice(from,1);editingPage.elements.splice(i,0,m);renderBuilderBlocks();};host.append(card);});}
 $("savePage").onclick=async()=>{try{editingPage.title=$("editPageTitle").value;await api("/api/admin/pages/"+editingPage.id,{method:"PUT",body:JSON.stringify({title:editingPage.title,elements:editingPage.elements})});await loadAdminPages();await loadCustomNav();$("pageStatus").textContent="Page saved.";toast("Page saved.");}catch(e){$("pageStatus").textContent=e.message;}};
-function renderCustomPage(slug){const page=customPages.find(p=>p.slug===slug);if(!page)return;let view=document.getElementById("custom-view-"+slug);if(!view){view=document.createElement("section");view.id="custom-view-"+slug;view.className="view hidden";document.querySelector(".main").append(view);}view.innerHTML="";page.elements.forEach(el=>{const wrap=document.createElement("div");wrap.className="custom-element";wrap.style.width=el.width+"%";wrap.style.color=el.color;wrap.style.borderRadius=el.radius+"px";if(el.type==="image"){const img=document.createElement("img");img.src=el.content;wrap.append(img);}else if(el.type==="video"){const v=document.createElement("video");v.src=el.content;v.controls=true;wrap.append(v);}else if(el.type==="button"){const b=document.createElement("button");b.className="primary";b.textContent=el.label||el.content;b.onclick=()=>{if(el.action==="open-page")showView(el.target);else if(el.action==="award-currency"){api("/api/pages/"+slug+"/action",{method:"POST",body:JSON.stringify({elementId:el.id})}).then(r=>toast("You received "+r.amount+" "+r.currency+"! Balance: "+r.balance)).catch(e=>toast(e.message));}};wrap.append(b);}else{wrap.textContent=el.content;}view.append(wrap);});view.classList.remove("hidden");}
+function runButtonCode(code,slug,elementId){
+  const frame=document.createElement("iframe");frame.sandbox="allow-scripts";frame.style.display="none";
+  const safeCode=String(code).slice(0,12000);
+  frame.srcdoc=`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; style-src 'unsafe-inline'"><script>const send=(type,data={})=>parent.postMessage({source:'vivimess-button',type,data},'*');const vm=Object.freeze({toast:(text)=>send('toast',{text:String(text).slice(0,300)}),navigate:(slug)=>send('navigate',{slug:String(slug).slice(0,40)}),giveCurrency:(currencyId,amount)=>send('currency',{currencyId:String(currencyId),amount:Number(amount)})});try{(async()=>{${safeCode} })().catch(e=>send('error',{text:e.message}));}catch(e){send('error',{text:e.message});}<\/script>`;
+  const listener=async event=>{if(event.source!==frame.contentWindow||event.data?.source!=="vivimess-button")return;const {type,data}=event.data;if(type==="toast")toast(data.text);if(type==="navigate"){const p=customPages.find(x=>x.slug===data.slug);if(p)showView(data.slug);else toast("Tab not found.");}if(type==="currency"){try{const r=await api("/api/pages/"+slug+"/action",{method:"POST",body:JSON.stringify({elementId,currencyId:data.currencyId,amount:data.amount})});toast("You received "+r.amount+" "+r.currency+". Balance: "+r.balance);}catch(e){toast(e.message);}}if(type==="error")toast("Button code error: "+data.text);};window.addEventListener("message",listener);document.body.append(frame);setTimeout(()=>{window.removeEventListener("message",listener);frame.remove();},15000);
+}
+function renderCustomPage(slug){const page=customPages.find(p=>p.slug===slug);if(!page)return;let view=document.getElementById("custom-view-"+slug);if(!view){view=document.createElement("section");view.id="custom-view-"+slug;view.className="view hidden";document.querySelector(".main").append(view);}view.innerHTML="";page.elements.forEach(el=>{const wrap=document.createElement("div");wrap.className="custom-element";wrap.style.width=el.width+"%";wrap.style.color=el.color;wrap.style.borderRadius=el.radius+"px";if(el.type==="image"){const img=document.createElement("img");img.src=el.content;wrap.append(img);}else if(el.type==="video"){const v=document.createElement("video");v.src=el.content;v.controls=true;wrap.append(v);}else if(el.type==="button"){const b=document.createElement("button");b.className="primary";b.textContent=el.label||el.content;b.onclick=()=>{if(el.action==="open-page")showView(el.target);else if(el.action==="award-currency"){api("/api/pages/"+slug+"/action",{method:"POST",body:JSON.stringify({elementId:el.id})}).then(r=>toast("You received "+r.amount+" "+r.currency+"! Balance: "+r.balance)).catch(e=>toast(e.message));}else if(el.action==="code"){runButtonCode(el.code||"",slug,el.id);}};wrap.append(b);}else{wrap.textContent=el.content;}view.append(wrap);});view.classList.remove("hidden");}
 $("profileAvatarFile").onchange=async()=>{try{const file=$("profileAvatarFile").files[0];if(!file)return;if(!["image/png","image/jpeg","image/webp","image/gif"].includes(file.type))throw new Error("Choose a PNG, JPG, WEBP or GIF image.");if(file.size>7*1024*1024)throw new Error("Avatar must be smaller than 7 MB.");const preview=await fileAsDataUrl(file);renderAvatar($("profileAvatar"),{...me,avatar:preview});}catch(err){$("profileMessage").textContent=err.message;$("profileAvatarFile").value="";}};
 $("profileBannerFile").onchange=async()=>{try{const file=$("profileBannerFile").files[0];if(!file)return;if(!["image/png","image/jpeg","image/webp","image/gif","video/mp4","video/webm"].includes(file.type))throw new Error("Choose PNG, JPG, WEBP, GIF, MP4 or WEBM.");if(file.size>6*1024*1024)throw new Error("Banner must be smaller than 6 MB.");const banner=await fileAsDataUrl(file);renderProfileBanner({...me,banner});}catch(err){$("profileMessage").textContent=err.message;$("profileBannerFile").value="";}};
 $("profileBannerColor").oninput=()=>{const host=$("profileBanner");host.innerHTML="";host.style.backgroundImage="none";host.style.backgroundColor=$("profileBannerColor").value;};
@@ -255,6 +299,11 @@ if($("testSpeaker"))$("testSpeaker").onclick=async()=>{try{const Ctx=window.Audi
 if($("saveCallSettings"))$("saveCallSettings").onclick=()=>{callPrefs.turnUrl=$("turnUrl").value.trim();callPrefs.turnUsername=$("turnUsername").value.trim();callPrefs.turnPassword=$("turnPassword").value;localStorage.setItem(CALL_PREFS_KEY,JSON.stringify(callPrefs));$("callSettingsStatus").textContent="Saved. TURN settings apply to the next call.";};
 if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener("devicechange",refreshAudioDevices);
 
+// Notification sound preferences (stored per browser/device).
+if($("soundCalls")){$("soundCalls").checked=soundPrefs.calls;$("soundCalls").onchange=()=>{soundPrefs.calls=$("soundCalls").checked;saveSoundPrefs();if(!soundPrefs.calls)stopRingtone();};}
+if($("soundMessages")){$("soundMessages").checked=soundPrefs.messages;$("soundMessages").onchange=()=>{soundPrefs.messages=$("soundMessages").checked;saveSoundPrefs();};}
+if($("testUiSound"))$("testUiSound").onclick=()=>{if(soundContext?.state==="suspended")soundContext.resume();playUiTone("message");};
+if($("enableCallSound"))$("enableCallSound").onclick=async()=>{try{soundContext=soundContext||new (window.AudioContext||window.webkitAudioContext)();await soundContext.resume();$("remoteAudio").muted=false;await $("remoteAudio").play();$("enableCallSound").classList.add("hidden");$("callHint").textContent="Audio enabled";}catch(e){toast("Could not enable audio: "+e.message);}};
 $("acceptCallBtn").onclick=()=>{
   const call=pendingIncomingCall;
   if(!call)return;
@@ -272,22 +321,37 @@ $("declineCallBtn").onclick=()=>{
 $("audioCall").onclick=()=>{if(activeFriend)startCall(activeFriend.id,"audio",false);};
 async function startCall(peer,mode,isAnswer){
   if(!peer||!socket)return;
-  currentCallPeer=peer;callMode="audio";$ ("callModal").classList.remove("hidden");
+  currentCallPeer=peer;callMode="audio";if(!isAnswer)startRingtone("outgoing");$ ("callModal").classList.remove("hidden");
   $("callTitle").textContent="Voice call";$("callHint").textContent=isAnswer?"Connecting…":"Calling…";
   $("muteBtn").textContent="🎙 Mute";
   try{
     const audioConstraints=callPrefs.micId?{deviceId:{exact:callPrefs.micId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}:{echoCancellation:true,noiseSuppression:true,autoGainControl:true};
     localStream=await navigator.mediaDevices.getUserMedia({audio:audioConstraints,video:false});
     pc=new RTCPeerConnection(makeIceConfig());
-    pc.addTransceiver("video",{direction:"sendrecv"});
-    localStream.getAudioTracks().forEach(track=>pc.addTrack(track,localStream));
+    // Reserve a negotiated video channel during call setup for later screen sharing.
+    const screenTransceiver=pc.addTransceiver("video",{direction:"sendrecv"});
+    screenSender=screenTransceiver.sender;
+    localStream.getAudioTracks().forEach(track=>{
+      const sender=pc.addTrack(track,localStream);
+      try{const params=sender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];params.encodings[0].maxBitrate=48000;sender.setParameters(params).catch(()=>{});}catch{}
+    });
     pc.ontrack=async e=>{
-      const stream=e.streams?.[0]||new MediaStream([e.track]);
-      if(e.track.kind==="audio"){$("remoteAudio").srcObject=stream;if(callPrefs.speakerId&&$("remoteAudio").setSinkId){try{await $("remoteAudio").setSinkId(callPrefs.speakerId);}catch(err){console.warn("Audio output selection failed",err);}}try{await $("remoteAudio").play();}catch(err){toast("Click the page once to allow call audio playback.");}$ ("callHint").textContent="Voice connected";}
-      if(e.track.kind==="video"){$("remoteVideo").srcObject=stream;e.track.onunmute=()=>$ ("remoteVideo").classList.add("screen-live");}
+      if(e.track.kind==="audio"){
+        stopRingtone();const audio=$("remoteAudio");audio.autoplay=true;audio.playsInline=true;audio.muted=false;audio.volume=1;
+        audio.srcObject=e.streams?.[0]||new MediaStream([e.track]);
+        if(callPrefs.speakerId&&audio.setSinkId){try{await audio.setSinkId(callPrefs.speakerId);}catch(err){console.warn("Audio output selection failed",err);}}
+        try{await audio.play();$("callHint").textContent="Voice connected";}catch(err){$("callHint").textContent="Browser blocked call audio. Press Enable sound.";$("enableCallSound").classList.remove("hidden");}
+      }
+      if(e.track.kind==="video"){
+        const video=$("remoteVideo");video.autoplay=true;video.playsInline=true;video.muted=true;
+        video.srcObject=new MediaStream([e.track]);
+        const show=()=>{video.classList.add("screen-live");video.play().catch(err=>{console.warn("Remote screen playback failed",err);$("callHint").textContent="Screen received, but playback failed.";});};
+        e.track.onunmute=show;e.track.onmute=()=>video.classList.remove("screen-live");
+        if(e.track.readyState==="live"&&!e.track.muted)show();
+      }
     };
     pc.onicecandidate=e=>{if(e.candidate&&currentCallPeer)socket.emit("call:signal",{to:peer,signal:{type:"ice",candidate:e.candidate}});};
-    pc.onconnectionstatechange=()=>{if(!pc)return;const state=pc.connectionState;if(state==="connected")$("callHint").textContent="Connected";else if(["failed","disconnected"].includes(state))$("callHint").textContent="Connection interrupted — check network / TURN settings.";};
+    pc.onconnectionstatechange=()=>{if(!pc)return;const state=pc.connectionState;if(state==="connected"){stopRingtone();$("callHint").textContent="Connected";}else if(["failed","disconnected"].includes(state))$("callHint").textContent="Connection interrupted — check network / TURN settings.";};
     if(isAnswer){
       if(incomingOffer){await pc.setRemoteDescription(incomingOffer);for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];const answer=await pc.createAnswer();await pc.setLocalDescription(answer);socket.emit("call:signal",{to:peer,signal:{type:"description",description:pc.localDescription}});incomingOffer=null;}
       // If the offer arrives after the user accepts, handleSignal creates the answer.
@@ -314,20 +378,46 @@ $("muteBtn").onclick=()=>{if(!localStream)return;const t=localStream.getAudioTra
 
 $("shareBtn").onclick=async()=>{
   try{
-    if(!pc)return;
-    if(!pc||pc.connectionState!=="connected")throw new Error("Connect the voice call first, then share your screen.");
-    const screen=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:false});
-    const track=screen.getVideoTracks()[0];const transceiver=pc.getTransceivers().find(t=>t.sender?.track===null&&t.receiver?.track?.kind==="video")||pc.getTransceivers().find(t=>t.receiver?.track?.kind==="video");
-    if(!transceiver?.sender)throw new Error("Screen sharing channel unavailable.");
-    await transceiver.sender.replaceTrack(track);$("shareBtn").textContent="▧ Stop sharing";
-    track.onended=async()=>{try{await transceiver.sender.replaceTrack(null);}catch{}$("shareBtn").textContent="▧ Share screen";};
-  }catch(e){toast("Screen sharing: "+e.message);}
+    if(!pc||pc.connectionState!=="connected")throw new Error("Сначала дождись подключения голосового звонка.");
+    if(screenStream){
+      const old=screenStream;screenStream=null;
+      if(screenSender)await screenSender.replaceTrack(null);
+      old.getTracks().forEach(t=>t.stop());
+      $("shareBtn").textContent="▧ Share screen";
+      $("callHint").textContent="Screen sharing stopped";
+      return;
+    }
+    if(!window.isSecureContext)throw new Error("Демонстрация экрана доступна только на HTTPS-сайте.");
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)throw new Error("Браузер не поддерживает демонстрацию. Открой сайт в актуальном Chrome или Edge.");
+    // getDisplayMedia must be called directly from this click handler.
+    const captured=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15,max:30},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    const track=captured.getVideoTracks()[0];
+    if(!track)throw new Error("Браузер не вернул видеопоток экрана.");
+    const videoTransceiver=pc.getTransceivers().find(t=>t.sender===screenSender)||pc.getTransceivers().find(t=>t.receiver?.track?.kind==="video");
+    if(!videoTransceiver)throw new Error("Не найден согласованный видеоканал. Заверши звонок и начни новый после обновления страницы у обоих участников.");
+    screenSender=videoTransceiver.sender;
+    if(videoTransceiver.direction!=="sendrecv")videoTransceiver.direction="sendrecv";
+    await screenSender.replaceTrack(track);
+    screenStream=captured;
+    $("shareBtn").textContent="▧ Stop sharing";
+    $("callHint").textContent="You are sharing your screen";
+    track.addEventListener("ended",async()=>{
+      try{await screenSender?.replaceTrack(null);}catch(err){console.warn("Could not stop screen sender",err);}
+      if(screenStream===captured)screenStream=null;
+      $("shareBtn").textContent="▧ Share screen";
+      $("callHint").textContent="Screen sharing stopped";
+    },{once:true});
+  }catch(e){
+    if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
+    $("shareBtn").textContent="▧ Share screen";
+    toast("Демонстрация экрана: "+(e.name==="NotAllowedError"?"доступ отменён или запрещён браузером":e.message));
+  }
 };
 $("hangupBtn").onclick=()=>endCall(true);
 function endCall(notify){
   if(notify&&currentCallPeer&&socket)socket.emit("call:end",{to:currentCallPeer});
-  if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
-  $("remoteVideo").srcObject=null;$("remoteAudio").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("shareBtn").textContent="▧ Share screen";$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
+  stopRingtone();if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}screenSender=null;if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
+  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("remoteAudio").srcObject=null;$("shareBtn").textContent="▧ Share screen";$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
 }
 $("designForm").onsubmit=async e=>{
   e.preventDefault();try{
