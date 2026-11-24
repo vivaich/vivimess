@@ -1,8 +1,8 @@
 {
   "name": "vivimess",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "ViviMess community messenger with friend requests, media chat, GIF collection, voice calls and visual custom pages",
+  "description": "ViviMess 2.0 community messenger with owner controls, moderator review, custom pages, media chat and WebRTC voice-call foundation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

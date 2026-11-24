@@ -72,7 +72,7 @@ function tokenFor(user) {
   return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: "7d" });
 }
 function safeUser(user) {
-  return { id: user.id, username: user.username, displayName: user.displayName, bio: user.bio || "", avatar: user.avatar || "", status: user.status || "Online", role: user.role || "user", balances: user.balances || {} };
+  return { id: user.id, username: user.username, displayName: user.displayName, bio: user.bio || "", avatar: user.avatar || "", banner: user.banner || "", bannerColor: user.bannerColor || "#087c70", status: user.status || "Online", role: user.role || "user", balances: user.balances || {} };
 }
 function auth(req, res, next) {
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -82,8 +82,12 @@ function auth(req, res, next) {
 function requireAdmin(req, res, next) {
   const user = db.users.find(u => u.id === req.user.id);
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access only." });
-  req.admin = user;
-  next();
+  req.admin = user; next();
+}
+function requireModerator(req, res, next) {
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user || !["admin", "moderator"].includes(user.role)) return res.status(403).json({ error: "Moderator access only." });
+  req.staff = user; next();
 }
 app.get("/api/settings", (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "" }));
 app.get("/api/admin/settings", auth, requireAdmin, (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "" }));
@@ -164,10 +168,11 @@ app.post("/api/admin/balance", auth, requireAdmin, (req, res) => {
   save(); res.json({ok:true, balance:target.balances[currency.id]});
 });
 app.post("/api/admin/roles", auth, requireAdmin, (req, res) => {
+  if (req.admin.username !== "viva") return res.status(403).json({error:"Only the owner can assign staff roles."});
   const target = db.users.find(u => u.username === String(req.body.username || "").trim().toLowerCase());
   if (!target) return res.status(404).json({error:"Account not found."});
   if (target.username === "viva") return res.status(400).json({error:"The owner account cannot be changed."});
-  target.role = req.body.role === "admin" ? "admin" : "user";
+  target.role = ["admin", "moderator"].includes(req.body.role) ? req.body.role : "user";
   save(); res.json({ok:true, user:safeUser(target)});
 });
 
@@ -180,8 +185,32 @@ function emitToUser(userId, event, data) {
   }
 }
 
+// Moderator lookup: profile + friends for one username. Moderators have read-only access.
+app.get("/api/moderation/user/:username", auth, requireModerator, (req,res)=>{
+  const target=db.users.find(u=>u.username===String(req.params.username||"").trim().toLowerCase());
+  if(!target) return res.status(404).json({error:"User not found."});
+  const friendIds=new Set(db.friendships.filter(f=>f.from===target.id||f.to===target.id).map(f=>f.from===target.id?f.to:f.from));
+  const friends=db.users.filter(u=>friendIds.has(u.id)).map(safeUser);
+  const recent=db.messages.filter(m=>m.from===target.id||m.to===target.id).slice(-100).map(m=>({...m,fromUsername:db.users.find(u=>u.id===m.from)?.username||"deleted",toUsername:db.users.find(u=>u.id===m.to)?.username||"deleted"}));
+  res.json({user:safeUser(target),friends,recentMessages:recent});
+});
+// Owner-triggered clean start. A dated backup is written before removing community data.
+app.post("/api/admin/reset-community", auth, requireAdmin, (req,res)=>{
+  if(req.admin.username!=="viva") return res.status(403).json({error:"Only the owner can reset the community."});
+  const owner=db.users.find(u=>u.username==="viva");
+  if(!owner) return res.status(500).json({error:"Owner account missing; reset cancelled."});
+  const backup=path.join(__dirname,`data-backup-${Date.now()}.json`);
+  try { if(fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE,backup); } catch(e) { return res.status(500).json({error:"Backup failed; no data was deleted."}); }
+  db.users=[owner]; owner.role="admin"; owner.seededAdmin=true;
+  db.friendships=[]; db.friendRequests=[]; db.messages=[]; db.callLogs=[]; db.gifLibrary=[];
+  db.customPages=[]; db.customCss="";
+  db.currencies=[{id:"default",name:"Чекушня",logo:"",logoType:"image",createdAt:Date.now()}];
+  owner.balances={default:0}; save();
+  res.json({ok:true,backup:path.basename(backup),message:"Community reset complete. Owner account preserved."});
+});
+
 // Owner-only account deletion. The owner account itself is protected.
-app.get("/api/admin/users", auth, requireAdmin, (req,res)=>{
+app.get("/api/admin/users", auth, requireModerator, (req,res)=>{
   res.json({users:db.users.map(u=>({id:u.id,username:u.username,displayName:u.displayName,role:u.role,createdAt:u.createdAt}))});
 });
 app.delete("/api/admin/users/:id", auth, requireAdmin, (req,res)=>{
@@ -196,14 +225,14 @@ app.delete("/api/admin/users/:id", auth, requireAdmin, (req,res)=>{
   save(); res.json({ok:true});
 });
 // Moderation access is explicit and restricted to administrators; no call audio is stored.
-app.get("/api/admin/conversation", auth, requireAdmin, (req,res)=>{
+app.get("/api/admin/conversation", auth, requireModerator, (req,res)=>{
   const a=db.users.find(u=>u.username===String(req.query.a||"").toLowerCase());
   const b=db.users.find(u=>u.username===String(req.query.b||"").toLowerCase());
   if(!a||!b) return res.status(404).json({error:"Both usernames must exist."});
   const messages=db.messages.filter(m=>(m.from===a.id&&m.to===b.id)||(m.from===b.id&&m.to===a.id)).slice(-300).map(m=>({...m,fromUsername:db.users.find(u=>u.id===m.from)?.username||"deleted",toUsername:db.users.find(u=>u.id===m.to)?.username||"deleted"}));
   res.json({a:a.username,b:b.username,messages});
 });
-app.get("/api/admin/calls", auth, requireAdmin, (req,res)=>{
+app.get("/api/admin/calls", auth, requireModerator, (req,res)=>{
   res.json({calls:db.callLogs.slice(-100).reverse().map(c=>({...c,fromUsername:db.users.find(u=>u.id===c.from)?.username||"deleted",toUsername:db.users.find(u=>u.id===c.to)?.username||"deleted"}))});
 });
 
@@ -240,6 +269,13 @@ app.patch("/api/profile", auth, (req, res) => {
     if (avatar && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(avatar) && !/^https?:\/\//i.test(avatar)) return res.status(400).json({ error: "Choose a PNG, JPG, WEBP or GIF image." });
     user.avatar = avatar;
   }
+  if (req.body.banner !== undefined) {
+    const banner = String(req.body.banner || "").trim();
+    if (banner.length > 9 * 1024 * 1024) return res.status(400).json({ error: "Banner is too large. Maximum 6 MB." });
+    if (banner && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(banner) && !/^data:video\/(mp4|webm);base64,/.test(banner) && !/^https?:\/\//i.test(banner)) return res.status(400).json({ error: "Choose an image, GIF, MP4 or WEBM video." });
+    user.banner = banner;
+  }
+  if (req.body.bannerColor !== undefined && /^#[0-9a-fA-F]{6}$/.test(String(req.body.bannerColor))) user.bannerColor = String(req.body.bannerColor);
   save(); res.json({ user: safeUser(user) });
 });
 app.get("/api/users", auth, (req, res) => {

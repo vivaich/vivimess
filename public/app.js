@@ -3,7 +3,9 @@ let token = localStorage.getItem("vm_token") || "";
 if(token){$("bootSplash").classList.remove("hidden");$("auth").classList.add("hidden");}else{$("bootSplash").classList.add("hidden");$("auth").classList.remove("hidden");}
 let me = null, socket = null, activeFriend = null, friends = [], authMode = "login", siteSettings = {};
 let pc = null, localStream = null, currentCallPeer = null, incomingOffer = null, callMode = "audio", pendingIce = [], pendingIncomingCall = null;
-const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const CALL_PREFS_KEY="vm_call_preferences";
+let callPrefs=JSON.parse(localStorage.getItem(CALL_PREFS_KEY)||"{}");
+function makeIceConfig(){const iceServers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}];if(callPrefs.turnUrl){iceServers.push({urls:callPrefs.turnUrl.split(/[,\s]+/).filter(Boolean),username:callPrefs.turnUsername||"",credential:callPrefs.turnPassword||""});}return {iceServers,iceTransportPolicy:"all"};}
 
 function toast(message) { const el=$("toast"); el.textContent=message; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),2600); }
 async function api(url, options={}) {
@@ -34,11 +36,11 @@ async function boot() {
   try { const data=await api("/api/me"); me=data.user; }
   catch { token="";localStorage.removeItem("vm_token");$("bootSplash").classList.add("hidden");$("auth").classList.remove("hidden");$("app").classList.add("hidden");return; }
   $("bootSplash").classList.add("hidden");$("auth").classList.add("hidden");$("app").classList.remove("hidden");
-  $("studioNav").classList.toggle("hidden", me.role !== "admin");
-  await loadSiteSettings(); await loadCurrencies();
+  $("studioNav").classList.toggle("hidden", !["admin","moderator"].includes(me.role));
+  await loadSiteSettings(); await loadCurrencies(); loadCallPreferences(); refreshAudioDevices();
   $("miniUser").textContent=me.displayName+"  @"+me.username;
   $("profileHeading").textContent=me.displayName;
-  $("profileUsername").value=me.username;$("profileName").value=me.displayName;$("profileBio").value=me.bio||"";$("profileAvatarFile").value="";renderAvatar($("profileAvatar"),me);
+  $("profileUsername").value=me.username;$("profileName").value=me.displayName;$("profileBio").value=me.bio||"";$("profileAvatarFile").value="";$("profileBannerFile").value="";$("profileBannerColor").value=me.bannerColor||"#087c70";renderAvatar($("profileAvatar"),me);renderProfileBanner(me);
   connectSocket(); await loadFriends(); await loadCustomNav(); showView("chats");
 }
 async function loadSiteSettings(){
@@ -63,6 +65,7 @@ function applySiteSettings(customCss=""){
   $("shareBtn").classList.toggle("hidden",siteSettings.showScreenShare===false);
 }
 async function loadStudio(){
+  if(me?.role==="moderator"){ document.querySelectorAll(".studio-panel").forEach((el,i)=>el.classList.toggle("hidden", i!==3)); loadAdminModeration(); return; }
   if(me?.role!=="admin")return;
   try{
     const data=await api("/api/admin/settings");siteSettings=data.settings||{};
@@ -146,13 +149,15 @@ function showView(name){
   const builtin=$("view-"+name); if(builtin){builtin.classList.remove("hidden");}else{renderCustomPage(name);}
   document.querySelectorAll(".nav[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===name));
   document.querySelectorAll("#customNav .nav").forEach(b=>b.classList.toggle("active",b.dataset.page===name));
-  $("pageTitle").textContent={chats:"Messages",friends:"Friends",profile:"My profile",studio:"Creator Studio"}[name]||customPages.find(p=>p.slug===name)?.title||name;
+  $("pageTitle").textContent={chats:"Messages",friends:"Friends",profile:"My profile",settings:"Settings",studio:"Creator Studio"}[name]||customPages.find(p=>p.slug===name)?.title||name;
   if(name==="friends"){loadPeople($("userSearch").value);loadFriendRequests();}
   if(name==="studio"){loadStudio();loadAdminPages();}
 }
 document.querySelectorAll(".nav[data-view]").forEach(b=>b.onclick=()=>showView(b.dataset.view));
 document.querySelectorAll("[data-goto]").forEach(b=>b.onclick=()=>showView(b.dataset.goto));
 $("logout").onclick=()=>{if(socket)socket.disconnect();localStorage.removeItem("vm_token");location.reload();};
+
+function renderProfileBanner(user){const host=$("profileBanner");if(!host)return;host.innerHTML="";host.style.backgroundImage="none";host.style.backgroundColor=user?.bannerColor||"#087c70";if(!user?.banner)return;if(user.banner.startsWith("data:video/")||/\.(mp4|webm)(\?|$)/i.test(user.banner)){const v=document.createElement("video");v.src=user.banner;v.autoplay=true;v.loop=true;v.muted=true;v.playsInline=true;host.append(v);}else{host.style.backgroundImage=`url("${user.banner}")`;}}
 function renderAvatar(el,user){el.innerHTML="";if(user.avatar){const img=document.createElement("img");img.src=user.avatar;img.onerror=()=>{el.textContent=(user.displayName||user.username||"V")[0].toUpperCase();};el.append(img);}else el.textContent=(user.displayName||user.username||"V")[0].toUpperCase();}
 async function loadFriends(){
   try{friends=(await api("/api/friends")).users;renderFriends();renderFriendsGrid();}catch(e){toast(e.message);}
@@ -198,6 +203,8 @@ async function loadAdminModeration(){
   }catch(e){console.warn("Moderation tools:",e.message);}
 }
 $("loadModerationChat").onclick=async()=>{try{const a=$("moderationUserA").value.trim(),b=$("moderationUserB").value.trim();const data=await api("/api/admin/conversation?a="+encodeURIComponent(a)+"&b="+encodeURIComponent(b));const host=$("moderationMessages");host.innerHTML="";if(!data.messages.length){host.textContent="No messages found.";return;}data.messages.forEach(m=>{const row=document.createElement("div");row.className="moderation-message";const who=document.createElement("b");who.textContent="@"+m.fromUsername+" ";const body=document.createElement("span");body.textContent=m.text||("["+(m.media?.type||"media")+"]");const time=document.createElement("small");time.textContent=new Date(m.createdAt).toLocaleString();row.append(who,body,time);host.append(row);});}catch(e){toast(e.message);}};
+$("lookupModerationUser").onclick=async()=>{try{const name=$("moderationLookup").value.trim();if(!name)throw new Error("Enter a username.");const d=await api("/api/moderation/user/"+encodeURIComponent(name));const host=$("moderationUserResult");host.innerHTML="";const head=document.createElement("p");head.textContent=d.user.displayName+" @"+d.user.username+" · "+d.user.role;host.append(head);const f=document.createElement("p");f.textContent="Friends ("+d.friends.length+"): "+(d.friends.map(x=>"@"+x.username).join(", ")||"none");host.append(f);const title=document.createElement("h5");title.textContent="Recent messages involving this user";host.append(title);d.recentMessages.forEach(m=>{const row=document.createElement("p");row.className="moderation-message";row.textContent="@"+m.fromUsername+" → @"+m.toUsername+": "+(m.text||"["+(m.media?.type||"media")+"]");host.append(row);});}catch(e){toast(e.message);}};
+$("resetCommunity").onclick=async()=>{if(!confirm("This will delete all accounts except viva, all old messages, friends, call logs, GIFs and custom pages. A backup is created first. Continue?"))return;if(!confirm("Final confirmation: permanently reset the ViviMess community?"))return;try{const d=await api("/api/admin/reset-community",{method:"POST",body:"{}"});toast("Reset complete. Backup: "+d.backup);setTimeout(()=>location.reload(),1200);}catch(e){toast(e.message);}};
 
 async function loadAdminPages(){try{const d=await api("/api/admin/pages");customPages=d.pages||[];renderAdminPages();}catch(e){}}
 async function loadCustomNav(){try{const d=await api("/api/pages");customPages=d.pages||[];const nav=$("customNav");nav.innerHTML="";customPages.forEach(p=>{const b=document.createElement("button");b.className="nav";b.dataset.page=p.slug;b.innerHTML="✧ <span></span>";b.querySelector("span").textContent=p.title;b.onclick=()=>showView(p.slug);nav.append(b);});}catch(e){}}
@@ -210,8 +217,43 @@ function renderBuilderBlocks(){const host=$("builderBlocks");host.innerHTML="";(
 $("savePage").onclick=async()=>{try{editingPage.title=$("editPageTitle").value;await api("/api/admin/pages/"+editingPage.id,{method:"PUT",body:JSON.stringify({title:editingPage.title,elements:editingPage.elements})});await loadAdminPages();await loadCustomNav();$("pageStatus").textContent="Page saved.";toast("Page saved.");}catch(e){$("pageStatus").textContent=e.message;}};
 function renderCustomPage(slug){const page=customPages.find(p=>p.slug===slug);if(!page)return;let view=document.getElementById("custom-view-"+slug);if(!view){view=document.createElement("section");view.id="custom-view-"+slug;view.className="view hidden";document.querySelector(".main").append(view);}view.innerHTML="";page.elements.forEach(el=>{const wrap=document.createElement("div");wrap.className="custom-element";wrap.style.width=el.width+"%";wrap.style.color=el.color;wrap.style.borderRadius=el.radius+"px";if(el.type==="image"){const img=document.createElement("img");img.src=el.content;wrap.append(img);}else if(el.type==="video"){const v=document.createElement("video");v.src=el.content;v.controls=true;wrap.append(v);}else if(el.type==="button"){const b=document.createElement("button");b.className="primary";b.textContent=el.label||el.content;b.onclick=()=>{if(el.action==="open-page")showView(el.target);else if(el.action==="award-currency"){api("/api/pages/"+slug+"/action",{method:"POST",body:JSON.stringify({elementId:el.id})}).then(r=>toast("You received "+r.amount+" "+r.currency+"! Balance: "+r.balance)).catch(e=>toast(e.message));}};wrap.append(b);}else{wrap.textContent=el.content;}view.append(wrap);});view.classList.remove("hidden");}
 $("profileAvatarFile").onchange=async()=>{try{const file=$("profileAvatarFile").files[0];if(!file)return;if(!["image/png","image/jpeg","image/webp","image/gif"].includes(file.type))throw new Error("Choose a PNG, JPG, WEBP or GIF image.");if(file.size>7*1024*1024)throw new Error("Avatar must be smaller than 7 MB.");const preview=await fileAsDataUrl(file);renderAvatar($("profileAvatar"),{...me,avatar:preview});}catch(err){$("profileMessage").textContent=err.message;$("profileAvatarFile").value="";}};
-$("profileForm").onsubmit=async e=>{e.preventDefault();try{const file=$("profileAvatarFile").files[0];const avatar=file?await fileAsDataUrl(file):me.avatar||"";const data=await api("/api/profile",{method:"PATCH",body:JSON.stringify({displayName:$("profileName").value,bio:$("profileBio").value,avatar})});me=data.user;$("profileHeading").textContent=me.displayName;$("profileUsername").value=me.username;renderAvatar($("profileAvatar"),me);$("miniUser").textContent=me.displayName+"  @"+me.username;$("profileAvatarFile").value="";$("profileMessage").textContent="Profile saved!";toast("Profile saved!");}catch(err){$("profileMessage").textContent=err.message;}};
+$("profileBannerFile").onchange=async()=>{try{const file=$("profileBannerFile").files[0];if(!file)return;if(!["image/png","image/jpeg","image/webp","image/gif","video/mp4","video/webm"].includes(file.type))throw new Error("Choose PNG, JPG, WEBP, GIF, MP4 or WEBM.");if(file.size>6*1024*1024)throw new Error("Banner must be smaller than 6 MB.");const banner=await fileAsDataUrl(file);renderProfileBanner({...me,banner});}catch(err){$("profileMessage").textContent=err.message;$("profileBannerFile").value="";}};
+$("profileBannerColor").oninput=()=>{const host=$("profileBanner");host.innerHTML="";host.style.backgroundImage="none";host.style.backgroundColor=$("profileBannerColor").value;};
+$("profileForm").onsubmit=async e=>{e.preventDefault();try{const file=$("profileAvatarFile").files[0];const avatar=file?await fileAsDataUrl(file):me.avatar||"";const bannerFile=$("profileBannerFile").files[0];const banner=bannerFile?await fileAsDataUrl(bannerFile):(me.banner||"");const data=await api("/api/profile",{method:"PATCH",body:JSON.stringify({displayName:$("profileName").value,bio:$("profileBio").value,avatar,banner,bannerColor:$("profileBannerColor").value})});me=data.user;$("profileHeading").textContent=me.displayName;$("profileUsername").value=me.username;renderAvatar($("profileAvatar"),me);renderProfileBanner(me);$("miniUser").textContent=me.displayName+"  @"+me.username;$("profileAvatarFile").value="";$("profileBannerFile").value="";$("profileMessage").textContent="Profile saved!";toast("Profile saved!");}catch(err){$("profileMessage").textContent=err.message;}};
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+function loadCallPreferences(){
+  if($("turnUrl")){ $("turnUrl").value=callPrefs.turnUrl||"";$("turnUsername").value=callPrefs.turnUsername||"";$("turnPassword").value=callPrefs.turnPassword||""; }
+}
+async function refreshAudioDevices(){
+  if(!navigator.mediaDevices?.enumerateDevices)return;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const mic=$("micSelect"),spk=$("speakerSelect");if(!mic||!spk)return;
+    const oldMic=callPrefs.micId||"",oldSpk=callPrefs.speakerId||"";
+    const fill=(select,items,selected)=>{select.innerHTML="";const def=document.createElement("option");def.value="";def.textContent="System default";select.append(def);items.forEach((d,i)=>{const o=document.createElement("option");o.value=d.deviceId;o.textContent=d.label||`${select===mic?"Microphone":"Output"} ${i+1}`;select.append(o);});select.value=selected;};
+    fill(mic,devices.filter(d=>d.kind==="audioinput"),oldMic);fill(spk,devices.filter(d=>d.kind==="audiooutput"),oldSpk);
+    $("deviceStatus").textContent=`Found ${devices.filter(d=>d.kind==="audioinput").length} microphone(s) and ${devices.filter(d=>d.kind==="audiooutput").length} audio output(s).`;
+  }catch(e){$("deviceStatus").textContent="Could not list devices: "+e.message;}
+}
+if($("refreshDevices"))$("refreshDevices").onclick=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});stream.getTracks().forEach(t=>t.stop());await refreshAudioDevices();}catch(e){$("deviceStatus").textContent="Microphone permission: "+e.message;}};
+if($("micSelect"))$("micSelect").onchange=()=>{callPrefs.micId=$("micSelect").value;localStorage.setItem(CALL_PREFS_KEY,JSON.stringify(callPrefs));$("deviceStatus").textContent="Microphone preference saved for your next call.";};
+if($("speakerSelect"))$("speakerSelect").onchange=async()=>{callPrefs.speakerId=$("speakerSelect").value;localStorage.setItem(CALL_PREFS_KEY,JSON.stringify(callPrefs));try{if($("remoteAudio").setSinkId)await $("remoteAudio").setSinkId(callPrefs.speakerId||"");else throw new Error("This browser does not support selecting audio output.");$("deviceStatus").textContent="Audio output selected.";}catch(e){$("deviceStatus").textContent=e.message;}};
+let micTestCleanup=null;
+if($("testMic"))$("testMic").onclick=async()=>{
+  if(micTestCleanup){micTestCleanup();micTestCleanup=null;return;}
+  let stream,ctx,raf;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:callPrefs.micId?{deviceId:{exact:callPrefs.micId}}:true});
+    ctx=new (window.AudioContext||window.webkitAudioContext)();const analyser=ctx.createAnalyser();const source=ctx.createMediaStreamSource(stream);source.connect(analyser);analyser.fftSize=256;const data=new Uint8Array(analyser.frequencyBinCount);const fill=$("micMeterFill");
+    const stop=()=>{cancelAnimationFrame(raf);stream.getTracks().forEach(t=>t.stop());ctx.close();fill.style.width="0%";$("testMic").textContent="Test microphone";$("deviceStatus").textContent="Microphone test stopped.";micTestCleanup=null;};
+    micTestCleanup=stop;$("testMic").textContent="Stop microphone test";$("deviceStatus").textContent="Speak now — watch the level meter.";
+    const tick=()=>{analyser.getByteFrequencyData(data);const level=Math.min(100,Math.round(data.reduce((a,b)=>a+b,0)/data.length/110*100));fill.style.width=level+"%";raf=requestAnimationFrame(tick);};tick();
+  }catch(e){if(stream)stream.getTracks().forEach(t=>t.stop());$("deviceStatus").textContent="Microphone test failed: "+e.message;}
+};
+if($("testSpeaker"))$("testSpeaker").onclick=async()=>{try{const Ctx=window.AudioContext||window.webkitAudioContext;const ctx=new Ctx();const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=660;gain.gain.value=.08;osc.connect(gain);gain.connect(ctx.destination);osc.start();setTimeout(()=>{osc.stop();ctx.close();},650);$("deviceStatus").textContent="You should hear a short test tone.";}catch(e){$("deviceStatus").textContent="Speaker test failed: "+e.message;}};
+if($("saveCallSettings"))$("saveCallSettings").onclick=()=>{callPrefs.turnUrl=$("turnUrl").value.trim();callPrefs.turnUsername=$("turnUsername").value.trim();callPrefs.turnPassword=$("turnPassword").value;localStorage.setItem(CALL_PREFS_KEY,JSON.stringify(callPrefs));$("callSettingsStatus").textContent="Saved. TURN settings apply to the next call.";};
+if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener("devicechange",refreshAudioDevices);
 
 $("acceptCallBtn").onclick=()=>{
   const call=pendingIncomingCall;
@@ -229,22 +271,31 @@ $("declineCallBtn").onclick=()=>{
 };
 $("audioCall").onclick=()=>{if(activeFriend)startCall(activeFriend.id,"audio",false);};
 async function startCall(peer,mode,isAnswer){
-  if(!peer)return;currentCallPeer=peer;callMode=mode;$("callModal").classList.remove("hidden");$("callTitle").textContent="Voice call";
-  $("callHint").textContent=isAnswer?"Connecting…":"Calling…";
+  if(!peer||!socket)return;
+  currentCallPeer=peer;callMode="audio";$ ("callModal").classList.remove("hidden");
+  $("callTitle").textContent="Voice call";$("callHint").textContent=isAnswer?"Connecting…":"Calling…";
+  $("muteBtn").textContent="🎙 Mute";
   try{
-    localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-    pc=new RTCPeerConnection(ICE);pc.addTransceiver("video",{direction:"sendrecv"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-    pc.ontrack=e=>{$("remoteVideo").srcObject=e.streams[0];if(e.track.kind==="video"){e.track.onunmute=()=>$("remoteVideo").classList.add("screen-live");}if(e.track.kind==="audio")$("callHint").classList.add("hidden");};
-    pc.onicecandidate=e=>{if(e.candidate)socket.emit("call:signal",{to:peer,signal:{type:"ice",candidate:e.candidate}});};
-    pc.onconnectionstatechange=()=>{if(pc&&["failed","disconnected"].includes(pc.connectionState))$("callHint").textContent="Connection interrupted…";};
+    const audioConstraints=callPrefs.micId?{deviceId:{exact:callPrefs.micId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}:{echoCancellation:true,noiseSuppression:true,autoGainControl:true};
+    localStream=await navigator.mediaDevices.getUserMedia({audio:audioConstraints,video:false});
+    pc=new RTCPeerConnection(makeIceConfig());
+    pc.addTransceiver("video",{direction:"sendrecv"});
+    localStream.getAudioTracks().forEach(track=>pc.addTrack(track,localStream));
+    pc.ontrack=async e=>{
+      const stream=e.streams?.[0]||new MediaStream([e.track]);
+      if(e.track.kind==="audio"){$("remoteAudio").srcObject=stream;if(callPrefs.speakerId&&$("remoteAudio").setSinkId){try{await $("remoteAudio").setSinkId(callPrefs.speakerId);}catch(err){console.warn("Audio output selection failed",err);}}try{await $("remoteAudio").play();}catch(err){toast("Click the page once to allow call audio playback.");}$ ("callHint").textContent="Voice connected";}
+      if(e.track.kind==="video"){$("remoteVideo").srcObject=stream;e.track.onunmute=()=>$ ("remoteVideo").classList.add("screen-live");}
+    };
+    pc.onicecandidate=e=>{if(e.candidate&&currentCallPeer)socket.emit("call:signal",{to:peer,signal:{type:"ice",candidate:e.candidate}});};
+    pc.onconnectionstatechange=()=>{if(!pc)return;const state=pc.connectionState;if(state==="connected")$("callHint").textContent="Connected";else if(["failed","disconnected"].includes(state))$("callHint").textContent="Connection interrupted — check network / TURN settings.";};
     if(isAnswer){
-      if(incomingOffer){await pc.setRemoteDescription(incomingOffer);for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];}
-      if(incomingOffer){const answer=await pc.createAnswer();await pc.setLocalDescription(answer);socket.emit("call:signal",{to:peer,signal:{type:"description",description:pc.localDescription}});incomingOffer=null;}
+      if(incomingOffer){await pc.setRemoteDescription(incomingOffer);for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];const answer=await pc.createAnswer();await pc.setLocalDescription(answer);socket.emit("call:signal",{to:peer,signal:{type:"description",description:pc.localDescription}});incomingOffer=null;}
+      // If the offer arrives after the user accepts, handleSignal creates the answer.
     }else{
-      socket.emit("call:invite",{to:peer,mode});
+      socket.emit("call:invite",{to:peer,mode:"audio"});
       const offer=await pc.createOffer();await pc.setLocalDescription(offer);socket.emit("call:signal",{to:peer,signal:{type:"description",description:pc.localDescription}});
     }
-  }catch(e){toast("Microphone error: "+e.message);endCall(false);}
+  }catch(e){toast("Could not start call: "+e.message);endCall(true);}
 }
 async function handleSignal({from,signal}){
   try{
@@ -264,18 +315,19 @@ $("muteBtn").onclick=()=>{if(!localStream)return;const t=localStream.getAudioTra
 $("shareBtn").onclick=async()=>{
   try{
     if(!pc)return;
-    const screen=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
-    const track=screen.getVideoTracks()[0];const transceiver=pc.getTransceivers().find(t=>t.receiver.track.kind==="video");const sender=transceiver?.sender;
-    if(sender)await sender.replaceTrack(track);else throw new Error("Screen sharing channel unavailable.");
-    
-    track.onended=async()=>{const t=pc?.getTransceivers().find(x=>x.receiver.track.kind==="video");if(t?.sender)await t.sender.replaceTrack(null);};
-  }catch(e){toast("Screen sharing was cancelled or unavailable.");}
+    if(!pc||pc.connectionState!=="connected")throw new Error("Connect the voice call first, then share your screen.");
+    const screen=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:false});
+    const track=screen.getVideoTracks()[0];const transceiver=pc.getTransceivers().find(t=>t.sender?.track===null&&t.receiver?.track?.kind==="video")||pc.getTransceivers().find(t=>t.receiver?.track?.kind==="video");
+    if(!transceiver?.sender)throw new Error("Screen sharing channel unavailable.");
+    await transceiver.sender.replaceTrack(track);$("shareBtn").textContent="▧ Stop sharing";
+    track.onended=async()=>{try{await transceiver.sender.replaceTrack(null);}catch{}$("shareBtn").textContent="▧ Share screen";};
+  }catch(e){toast("Screen sharing: "+e.message);}
 };
 $("hangupBtn").onclick=()=>endCall(true);
 function endCall(notify){
   if(notify&&currentCallPeer&&socket)socket.emit("call:end",{to:currentCallPeer});
   if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
-  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
+  $("remoteVideo").srcObject=null;$("remoteAudio").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("shareBtn").textContent="▧ Share screen";$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
 }
 $("designForm").onsubmit=async e=>{
   e.preventDefault();try{

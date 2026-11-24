@@ -27,6 +27,7 @@
     <button class="nav active" data-view="chats">▣ <span>Messages</span></button>
     <button class="nav" data-view="friends">♧ <span>Friends</span></button>
     <button class="nav" data-view="profile">◉ <span>My profile</span></button>
+    <button class="nav" data-view="settings">⚙ <span>Settings</span></button>
     <button class="nav hidden" id="studioNav" data-view="studio">✦ <span>Creator Studio</span></button>
     <div id="customNav"></div>
     <div class="side-bottom"><div class="mini-user" id="miniUser"></div><button id="logout" class="nav">↪ <span>Sign out</span></button></div>
@@ -51,15 +52,35 @@
       <div class="panel section-panel"><h3>Friend requests</h3><div id="friendRequests" class="user-grid"></div></div><div class="panel section-panel"><h3>Your friends</h3><div id="friendsGrid" class="user-grid"></div></div>
     </section>
     <section id="view-profile" class="view hidden">
-      <div class="panel profile-panel"><div class="profile-banner"></div><div class="profile-content"><div class="avatar big" id="profileAvatar">V</div><h3 id="profileHeading">Your profile</h3><p class="muted">Make your creator profile yours.</p>
+      <div class="panel profile-panel"><div class="profile-banner" id="profileBanner"><span class="banner-placeholder">Profile banner</span></div><div class="profile-content"><div class="avatar big" id="profileAvatar">V</div><h3 id="profileHeading">Your profile</h3><p class="muted">Make your creator profile yours.</p>
         <form id="profileForm" class="profile-form">
           <label>Username (login and account ID)<input id="profileUsername" readonly aria-readonly="true"></label>
           <label>Name (shown to other users)<input id="profileName" maxlength="28" placeholder="Your display name"></label>
           <label>Avatar from your computer <small class="muted">PNG, JPG, WEBP or animated GIF · up to 7 MB</small><input id="profileAvatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+          <label>Profile banner <small class="muted">Image, animated GIF or video · up to 6 MB</small><input id="profileBannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"></label>
+          <label>Or choose a banner color <input id="profileBannerColor" type="color" value="#087c70"></label>
           <label>About you<textarea id="profileBio" maxlength="160" rows="3"></textarea></label>
           <button class="primary">Save profile</button>
         </form><p id="profileMessage" class="success"></p>
       </div></div>
+    </section>
+    <section id="view-settings" class="view hidden">
+      <div class="panel section-panel device-settings-panel">
+        <span class="eyebrow">PERSONAL AUDIO SETUP</span><h3>Voice & device settings</h3>
+        <p class="muted">Choose your microphone and headphones. Changes apply to the next call; output changes apply immediately when supported by your browser.</p>
+        <label>Microphone<select id="micSelect"><option value="">System default</option></select></label>
+        <label>Headphones / speakers<select id="speakerSelect"><option value="">System default</option></select></label>
+        <div class="device-actions"><button id="refreshDevices" class="soft" type="button">↻ Find devices</button><button id="testMic" class="primary" type="button">Test microphone</button><button id="testSpeaker" class="soft" type="button">Test headphones</button></div>
+        <div class="mic-meter"><span id="micMeterFill"></span></div><p id="deviceStatus" class="success" aria-live="polite">Devices not checked yet.</p>
+        <div class="settings-note"><b>Screen sharing</b><p>During a connected call, press Share screen and choose a screen or window in the browser dialog. The browser requires this action to be started by you.</p></div>
+      </div>
+      <div class="panel section-panel device-settings-panel">
+        <h3>Connection settings</h3><p class="muted">ViviMess uses WebRTC. STUN helps discover network routes. Some networks also require a TURN relay; enter credentials from your TURN provider if direct connection fails.</p>
+        <label>TURN server URL<input id="turnUrl" placeholder="turn:your-server.example:3478"></label>
+        <label>TURN username<input id="turnUsername" autocomplete="off"></label>
+        <label>TURN password<input id="turnPassword" type="password" autocomplete="new-password"></label>
+        <button id="saveCallSettings" class="primary" type="button">Save call settings</button><p id="callSettingsStatus" class="success"></p>
+      </div>
     </section>
     <section id="view-studio" class="view hidden">
       <div class="studio-intro"><div><span class="eyebrow">OWNER CONTROL CENTER</span><h2>Creator Studio</h2><p class="muted">Change your site visually. No coding needed for everyday edits.</p></div><div class="admin-chip">✦ ADMIN MODE</div></div>
@@ -101,7 +122,7 @@
           <h3>Accounts & permissions</h3><p class="muted">Only admins can create currencies and manage roles. The owner viva can promote other accounts.</p>
           <form id="roleForm">
             <label>Username<input id="roleUsername" placeholder="username" required></label>
-            <label>Role<select id="roleValue"><option value="admin">Administrator</option><option value="user">Regular user</option></select></label>
+            <label>Role<select id="roleValue"><option value="admin">Administrator</option><option value="moderator">Moderator</option><option value="user">Regular user</option></select></label>
             <button class="primary">Save role</button>
           </form>
           <form id="balanceForm">
@@ -126,7 +147,9 @@
           <h3>Community moderation</h3>
           <p class="muted">Transparent moderation tools. Users should be informed that administrators may review reported conversations. Calls are logged as metadata only; audio is never recorded.</p>
           <div class="admin-moderation-grid">
-            <div><h4>Accounts</h4><div id="adminAccounts" class="admin-list"></div></div>
+            <div><h4>Accounts</h4><div id="adminAccounts" class="admin-list"></div>
+              <h4>Find a user</h4><label>Username<input id="moderationLookup" placeholder="type username"></label><button id="lookupModerationUser" class="soft" type="button">Find profile & friends</button><div id="moderationUserResult" class="admin-list"></div>
+              <button id="resetCommunity" class="danger" type="button">Reset community (keep viva only)</button><p class="tiny muted">Creates a local JSON backup before deleting community data. Use only once.</p></div>
             <div><h4>Conversation review</h4><label>First username<input id="moderationUserA" placeholder="username"></label><label>Second username<input id="moderationUserB" placeholder="username"></label><button id="loadModerationChat" class="soft">View conversation</button><div id="moderationMessages" class="moderation-messages"></div></div>
             <div><h4>Call history</h4><div id="adminCallHistory" class="admin-list"></div></div>
           </div>
@@ -154,7 +177,7 @@
 <div id="callModal" class="call-modal hidden">
   <div class="call-window">
     <div class="call-top"><div><span class="eyebrow">VIVIMESS LIVE</span><h3 id="callTitle">Call</h3></div><span class="live-tag"><i></i> LIVE</span></div>
-    <div class="video-stage audio-stage"><video id="remoteVideo" autoplay playsinline></video><div id="callHint" class="call-hint">Waiting for the other person…</div><div class="audio-call-avatar">☎</div></div>
+    <div class="video-stage audio-stage"><video id="remoteVideo" autoplay playsinline></video><audio id="remoteAudio" autoplay playsinline></audio><div id="callHint" class="call-hint">Waiting for the other person…</div><div class="audio-call-avatar">☎</div></div>
     <div class="call-controls"><button id="muteBtn" class="soft">🎙 Mute</button><button id="shareBtn" class="soft">▧ Share screen</button><button id="hangupBtn" class="danger">End call</button></div>
   </div>
 </div>
