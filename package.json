@@ -1,8 +1,8 @@
 {
   "name": "vivimess",
-  "version": "3.0.0",
+  "version": "5.0.0",
   "private": true,
-  "description": "ViviMess 3.0 messenger with Creator Studio, quests, shop, Paint, presence and group chats",
+  "description": "ViviMess 5.0 messenger with compact UI, Roblox previews, Paint presets, Creator Studio, shop, quests and voice calls",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

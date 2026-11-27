@@ -382,6 +382,44 @@ app.get("/api/groups",auth,(req,res)=>res.json({groups:db.groups.filter(g=>g.mem
 app.post("/api/groups",auth,(req,res)=>{const title=String(req.body.name||"").trim().slice(0,48);const ids=Array.isArray(req.body.members)?req.body.members.map(String):[];if(!title)return res.status(400).json({error:"Enter a group name."});const members=[...new Set([req.user.id,...ids])].filter(id=>db.users.some(u=>u.id===id));if(members.length<2||members.length>50)return res.status(400).json({error:"Choose at least one friend and no more than 49 others."});const g={id:require("crypto").randomUUID(),name:title,owner:req.user.id,members,messages:[],createdAt:Date.now()};db.groups.push(g);save();res.json({group:g});});
 app.post("/api/groups/:id/messages",auth,(req,res)=>{const g=db.groups.find(x=>x.id===req.params.id&&x.members.includes(req.user.id));if(!g)return res.status(404).json({error:"Group not found."});const text=String(req.body.text||"").trim().slice(0,2000);if(!text)return res.status(400).json({error:"Message is empty."});const m={id:require("crypto").randomUUID(),from:req.user.id,text,createdAt:Date.now()};g.messages.push(m);save();for(const uid of g.members)emitToUser(uid,"group:message",{groupId:g.id,message:m});res.json({message:m});});
 
+// Public Roblox experience metadata proxy. Keeps API calls same-origin to avoid browser CORS.
+const robloxMetaCache = new Map();
+app.get("/api/roblox/experience/:placeId", async (req, res) => {
+  const placeId = String(req.params.placeId || "");
+  if (!/^\d{1,20}$/.test(placeId)) return res.status(400).json({ error: "Invalid Roblox place ID." });
+  const cached = robloxMetaCache.get(placeId);
+  if (cached && cached.expires > Date.now()) return res.json(cached.value);
+  try {
+    const response = await fetch("https://games.roblox.com/v1/games/multiget-place-details?placeIds=" + encodeURIComponent(placeId), { signal: AbortSignal.timeout(9000) });
+    if (!response.ok) return res.status(502).json({ error: "Roblox metadata is temporarily unavailable." });
+    const places = await response.json();
+    const game = Array.isArray(places) ? places[0] : null;
+    if (!game) return res.status(404).json({ error: "Roblox experience not found." });
+    let thumbnail = "";
+    if (game.universeId) {
+      try {
+        const tr = await fetch("https://thumbnails.roblox.com/v1/games/" + encodeURIComponent(game.universeId) + "/thumbnails?size=768x432&format=Png&isCircular=false&count=1", { signal: AbortSignal.timeout(7000) });
+        if (tr.ok) {
+          const td = await tr.json();
+          thumbnail = td?.data?.find(x => x.imageUrl)?.imageUrl || "";
+        }
+      } catch {}
+    }
+    const value = {
+      name: String(game.name || "Roblox game").slice(0, 120),
+      creator: String(game.builder || game.creatorName || game.creator?.name || "Roblox creator").slice(0, 100),
+      thumbnail,
+      placeId
+    };
+    robloxMetaCache.set(placeId, { value, expires: Date.now() + 10 * 60 * 1000 });
+    if (robloxMetaCache.size > 300) robloxMetaCache.delete(robloxMetaCache.keys().next().value);
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(value);
+  } catch (e) {
+    res.status(504).json({ error: "Could not contact Roblox right now." });
+  }
+});
+
 app.get("/api/messages/:id", auth, (req, res) => {
   if (!areFriends(req.user.id, req.params.id)) return res.status(403).json({ error: "Add this person as a friend to chat." });
   const messages = db.messages.filter(m => (m.from === req.user.id && m.to === req.params.id) || (m.from === req.params.id && m.to === req.user.id)).slice(-200);
