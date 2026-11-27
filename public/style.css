@@ -76,3 +76,9 @@ button,input,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit;
 .audio-stage #remoteVideo:not(.screen-live){display:none!important}
 .audio-stage .audio-call-avatar{z-index:1}
 .audio-stage .call-hint{z-index:4}
+
+/* Creator Studio preview and test controls */
+.builder-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.page-preview{margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(5,12,20,.55)}
+.page-preview .custom-element{margin:10px 0;padding:12px;background:rgba(255,255,255,.035);max-width:100%;overflow-wrap:anywhere}
+.page-preview img,.page-preview video{display:block;max-width:100%;height:auto;border-radius:10px}

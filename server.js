@@ -249,8 +249,11 @@ app.post("/api/register", async (req, res) => {
   const password = String(req.body.password || "");
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return res.status(400).json({ error: "Username: 3–20 letters, numbers or _." });
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
-  if (db.users.some(u => u.username === username)) return res.status(409).json({ error: "This username is already taken." });
-  const user = { id: require("crypto").randomUUID(), username, displayName: displayName || username, passwordHash: await bcrypt.hash(password, 12), bio: "Hey! I'm using ViviMess.", avatar: "", status: "Online", role: "user", balances: Object.fromEntries(db.currencies.map(c => [c.id, 0])), createdAt: Date.now() };
+  const finalDisplayName = displayName || username;
+  const normalizedName = finalDisplayName.normalize("NFKC").toLocaleLowerCase("und");
+  if (db.users.some(u => String(u.username || "").trim().toLowerCase() === username)) return res.status(409).json({ error: "This username is already taken. Choose another username." });
+  if (db.users.some(u => String(u.displayName || u.username || "").trim().normalize("NFKC").toLocaleLowerCase("und") === normalizedName)) return res.status(409).json({ error: "This nickname is already taken. Choose another nickname." });
+  const user = { id: require("crypto").randomUUID(), username, displayName: finalDisplayName, passwordHash: await bcrypt.hash(password, 12), bio: "Hey! I'm using ViviMess.", avatar: "", status: "Online", role: "user", balances: Object.fromEntries(db.currencies.map(c => [c.id, 0])), createdAt: Date.now() };
   db.users.push(user); save();
   res.json({ token: tokenFor(user), user: safeUser(user) });
 });
@@ -268,7 +271,14 @@ app.get("/api/me", auth, (req, res) => {
 app.patch("/api/profile", auth, (req, res) => {
   const user = db.users.find(u => u.id === req.user.id);
   if (!user) return res.status(404).json({ error: "Account not found." });
-  if (req.body.displayName !== undefined) user.displayName = String(req.body.displayName).trim().slice(0, 28) || user.username;
+  if (req.body.displayName !== undefined) {
+    const nextName = String(req.body.displayName).trim().slice(0, 28) || user.username;
+    const normalizedName = nextName.normalize("NFKC").toLocaleLowerCase("und");
+    if (db.users.some(u => u.id !== user.id && String(u.displayName || u.username || "").trim().normalize("NFKC").toLocaleLowerCase("und") === normalizedName)) {
+      return res.status(409).json({ error: "This nickname is already taken. Choose another nickname." });
+    }
+    user.displayName = nextName;
+  }
   if (req.body.bio !== undefined) user.bio = String(req.body.bio).trim().slice(0, 160);
   if (req.body.avatar !== undefined) {
     const avatar = String(req.body.avatar || "").trim();
