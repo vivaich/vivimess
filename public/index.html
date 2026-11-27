@@ -124,11 +124,21 @@
           <h3>Advanced: custom CSS</h3><p class="muted">Optional code area. Ask ChatGPT for CSS changes and paste them here.</p>
           <textarea id="customCss" rows="9" spellcheck="false" placeholder="/* Your custom CSS goes here */"></textarea>
           <div class="code-actions"><button id="saveCss" class="primary">Save custom CSS</button><button id="clearCss" class="soft">Clear</button></div>
-          <h3 style="margin-top:22px">Advanced: custom JavaScript</h3><p class="muted">Scripts run in an isolated sandbox. Available API: vm.toast(text), vm.setTheme({accent, background, panel}).</p>
-          <textarea id="customJs" rows="8" spellcheck="false" placeholder='// Example: vm.toast("Hello from ViviMess!");'></textarea>
-          <div class="code-actions"><button id="saveJs" class="primary">Save JavaScript</button><button id="clearJs" class="soft">Clear</button></div>
-          <label class="toggle-row" style="margin-top:14px"><span><b>Roblox card theme</b><small>Green/blue Roblox-style game cards</small></span><input id="robloxTheme" type="checkbox" checked></label>
-          <button id="saveRobloxTheme" class="soft">Save Roblox theme</button>
+          <h3 style="margin-top:22px">Advanced: custom JavaScript</h3><p class="muted">JavaScript runs in an isolated sandbox. API: vm.toast(text), vm.setTheme({accent, background, panel}), vm.setRobloxTheme({background, border, button, artwork}), vm.log(text), vm.onMessage(callback).</p>
+          <textarea id="customJs" rows="10" spellcheck="false" placeholder='// Example: vm.toast("Hello from ViviMess!");
+vm.setTheme({accent:"#28e0b2"});'></textarea>
+          <div class="code-actions"><button id="saveJs" class="primary">Save JavaScript</button><button id="clearJs" class="soft">Clear</button><button id="runJs" class="soft">Run preview</button></div>
+          <div class="panel" style="margin-top:18px;padding:16px;background:var(--panel)">
+            <h3>Roblox card theme</h3><p class="muted">Separate from JavaScript. Change the game card colors here.</p>
+            <label class="toggle-row"><span><b>Enable Roblox theme</b><small>Use custom styling for Roblox game cards</small></span><input id="robloxTheme" type="checkbox" checked></label>
+            <div class="settings-grid">
+              <label>Card background<input id="robloxBg" type="color" value="#142b42"></label>
+              <label>Border<input id="robloxBorder" type="color" value="#00e6a8"></label>
+              <label>Play button<input id="robloxButton" type="color" value="#20c7a5"></label>
+              <label>Artwork background<input id="robloxArt" type="color" value="#1a3654"></label>
+            </div>
+            <button id="saveRobloxTheme" class="soft">Save Roblox theme</button>
+          </div>
           <p id="codeStatus" class="success"></p>
         </div>
         <div class="panel studio-panel">

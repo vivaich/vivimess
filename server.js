@@ -29,7 +29,8 @@ const DEFAULT_SETTINGS = {
   showFriends: true,
   showCalls: true,
   showVideo: false,
-  showScreenShare: true, logo: "", languageDefault: "ru"
+  showScreenShare: true, logo: "", languageDefault: "ru", robloxTheme: true,
+  robloxBg: "#142b42", robloxBorder: "#00e6a8", robloxButton: "#20c7a5", robloxArt: "#1a3654"
 };
 db.settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
 if (!Array.isArray(db.users)) db.users = [];
@@ -95,11 +96,12 @@ function requireModerator(req, res, next) {
 app.get("/api/settings", (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "", customJs: db.customJs || "" }));
 app.get("/api/admin/settings", auth, requireAdmin, (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "", customJs: db.customJs || "" }));
 app.patch("/api/admin/settings", auth, requireAdmin, (req, res) => {
-  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault", "robloxTheme"];
+  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault", "robloxTheme", "robloxBg", "robloxBorder", "robloxButton", "robloxArt"];
   for (const key of allowed) {
     if (req.body[key] === undefined) continue;
     if (key === "logo") { const v=String(req.body[key]||""); if(v.length>8*1024*1024 || (v && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(v))) return res.status(400).json({error:"Logo must be PNG, JPG, WEBP or GIF up to 6 MB."}); db.settings.logo=v; continue; }
     if (["showFriends", "showCalls", "showVideo", "showScreenShare", "robloxTheme"].includes(key)) db.settings[key] = !!req.body[key];
+    else if (["robloxBg", "robloxBorder", "robloxButton", "robloxArt", "accent", "background", "panel"].includes(key)) { const v=String(req.body[key]||""); if(!/^#[0-9a-f]{6}$/i.test(v)) return res.status(400).json({error:"Colors must use a six-digit HEX value."}); db.settings[key]=v; }
     else db.settings[key] = String(req.body[key]).slice(0, key === "tagline" ? 120 : 40);
   }
   save(); res.json({ settings: db.settings });
@@ -384,41 +386,59 @@ app.get("/api/groups",auth,(req,res)=>res.json({groups:db.groups.filter(g=>g.mem
 app.post("/api/groups",auth,(req,res)=>{const title=String(req.body.name||"").trim().slice(0,48);const ids=Array.isArray(req.body.members)?req.body.members.map(String):[];if(!title)return res.status(400).json({error:"Enter a group name."});const members=[...new Set([req.user.id,...ids])].filter(id=>db.users.some(u=>u.id===id));if(members.length<2||members.length>50)return res.status(400).json({error:"Choose at least one friend and no more than 49 others."});const g={id:require("crypto").randomUUID(),name:title,owner:req.user.id,members,messages:[],createdAt:Date.now()};db.groups.push(g);save();res.json({group:g});});
 app.post("/api/groups/:id/messages",auth,(req,res)=>{const g=db.groups.find(x=>x.id===req.params.id&&x.members.includes(req.user.id));if(!g)return res.status(404).json({error:"Group not found."});const text=String(req.body.text||"").trim().slice(0,2000);if(!text)return res.status(400).json({error:"Message is empty."});const m={id:require("crypto").randomUUID(),from:req.user.id,text,createdAt:Date.now()};g.messages.push(m);save();for(const uid of g.members)emitToUser(uid,"group:message",{groupId:g.id,message:m});res.json({message:m});});
 
-// Public Roblox experience metadata proxy. Keeps API calls same-origin to avoid browser CORS.
+// Public Roblox experience metadata proxy. Uses unauthenticated public endpoints:
+// placeId -> universeId -> game details + thumbnails.
 const robloxMetaCache = new Map();
+async function robloxJson(url) {
+  const response = await fetch(url, {
+    headers: { "Accept": "application/json", "User-Agent": "ViviMess/5.4 (+https://vivimess.onrender.com)" },
+    signal: AbortSignal.timeout(9000)
+  });
+  if (!response.ok) throw new Error("Roblox API returned " + response.status);
+  return response.json();
+}
 app.get("/api/roblox/experience/:placeId", async (req, res) => {
   const placeId = String(req.params.placeId || "");
   if (!/^\d{1,20}$/.test(placeId)) return res.status(400).json({ error: "Invalid Roblox place ID." });
   const cached = robloxMetaCache.get(placeId);
   if (cached && cached.expires > Date.now()) return res.json(cached.value);
   try {
-    const response = await fetch("https://games.roblox.com/v1/games/multiget-place-details?placeIds=" + encodeURIComponent(placeId), { signal: AbortSignal.timeout(9000) });
-    if (!response.ok) return res.status(502).json({ error: "Roblox metadata is temporarily unavailable." });
-    const places = await response.json();
-    const game = Array.isArray(places) ? places[0] : null;
+    const universeInfo = await robloxJson("https://apis.roblox.com/universes/v1/places/" + encodeURIComponent(placeId) + "/universe");
+    const universeId = String(universeInfo?.universeId || "");
+    if (!/^\d{1,20}$/.test(universeId)) return res.status(404).json({ error: "Roblox experience not found." });
+
+    const gameInfo = await robloxJson("https://games.roblox.com/v1/games?universeIds=" + encodeURIComponent(universeId));
+    const game = Array.isArray(gameInfo?.data) ? gameInfo.data[0] : null;
     if (!game) return res.status(404).json({ error: "Roblox experience not found." });
+
     let thumbnail = "";
-    if (game.universeId) {
+    try {
+      const thumbUrl = "https://thumbnails.roblox.com/v1/games/" + encodeURIComponent(universeId) + "/thumbnails?size=768x432&format=Png&isCircular=false&count=1";
+      const thumbData = await robloxJson(thumbUrl);
+      thumbnail = thumbData?.data?.find(x => x.state === "Completed" && x.imageUrl)?.imageUrl
+        || thumbData?.data?.find(x => x.imageUrl)?.imageUrl || "";
+    } catch {}
+    if (!thumbnail) {
       try {
-        const tr = await fetch("https://thumbnails.roblox.com/v1/games/" + encodeURIComponent(game.universeId) + "/thumbnails?size=768x432&format=Png&isCircular=false&count=1", { signal: AbortSignal.timeout(7000) });
-        if (tr.ok) {
-          const td = await tr.json();
-          thumbnail = td?.data?.find(x => x.imageUrl)?.imageUrl || "";
-        }
+        const iconData = await robloxJson("https://thumbnails.roblox.com/v1/games/icons?universeIds=" + encodeURIComponent(universeId) + "&size=512x512&format=Png&isCircular=false");
+        thumbnail = iconData?.data?.find(x => x.imageUrl)?.imageUrl || "";
       } catch {}
     }
+
     const value = {
-      name: String(game.name || "Roblox game").slice(0, 120),
-      creator: String(game.builder || game.creatorName || game.creator?.name || "Roblox creator").slice(0, 100),
+      name: String(game.name || "Roblox experience").slice(0, 120),
+      creator: String(game.creator?.name || game.creatorName || "Creator unavailable").slice(0, 100),
       thumbnail,
-      placeId
+      placeId,
+      universeId,
+      playing: Number.isFinite(game.playing) ? game.playing : null
     };
     robloxMetaCache.set(placeId, { value, expires: Date.now() + 10 * 60 * 1000 });
     if (robloxMetaCache.size > 300) robloxMetaCache.delete(robloxMetaCache.keys().next().value);
     res.set("Cache-Control", "public, max-age=300");
     res.json(value);
   } catch (e) {
-    res.status(504).json({ error: "Could not contact Roblox right now." });
+    res.status(502).json({ error: "Roblox game details are temporarily unavailable." });
   }
 });
 

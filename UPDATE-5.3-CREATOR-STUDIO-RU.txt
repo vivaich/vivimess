@@ -1,0 +1,12 @@
+ViviMess 5.3 — Creator Studio
+
+- JavaScript editor expanded with isolated sandbox APIs:
+  vm.toast(text), vm.log(text), vm.setTheme({accent, background, panel}),
+  vm.setRobloxTheme({background, border, button, artwork}), vm.onMessage(callback).
+- Added Run preview button.
+- Roblox card theme is now independent from custom JavaScript.
+- Roblox theme can be enabled/disabled and has separate color pickers for card background, border, Play button and artwork background.
+- Roblox theme settings are saved server-side for all users.
+- Custom JavaScript remains isolated in a sandbox and does not receive direct access to account tokens, database or parent-page DOM.
+
+Install: upload the contents of vm-work to the repository root and commit. Keep the existing data.json.

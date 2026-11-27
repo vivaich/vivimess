@@ -1,8 +1,8 @@
 {
   "name": "vivimess",
-  "version": "5.2.0",
+  "version": "5.4.0",
   "private": true,
-  "description": "ViviMess 5.2 with in-app sandboxed JavaScript editor and Roblox theme controls",
+  "description": "ViviMess 5.4 with Creator Studio and public Roblox game metadata",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

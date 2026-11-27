@@ -93,8 +93,16 @@ function applyCustomJavaScript(code=""){
   const frame=document.createElement("iframe");frame.id="vmCustomJsSandbox";frame.hidden=true;frame.setAttribute("sandbox","allow-scripts");
   const safeCode=code.replace(/<\/script/gi,"<\\/script");
   frame.srcdoc=`<!doctype html><meta charset="utf-8"><script>
-    const vm={toast:(text)=>parent.postMessage({type:'vm-custom-toast',text:String(text).slice(0,300)},'*'),setTheme:(theme)=>parent.postMessage({type:'vm-custom-theme',theme},'*')};
-    try{${safeCode}}catch(e){parent.postMessage({type:'vm-custom-error',text:String(e).slice(0,300)},'*')}
+    const send=(type,payload={})=>parent.postMessage({type,...payload},'*');
+    const vm={
+      toast:(text)=>send('vm-custom-toast',{text:String(text).slice(0,300)}),
+      log:(text)=>send('vm-custom-log',{text:String(text).slice(0,500)}),
+      setTheme:(theme)=>send('vm-custom-theme',{theme}),
+      setRobloxTheme:(theme)=>send('vm-custom-roblox-theme',{theme}),
+      onMessage:(callback)=>{ if(typeof callback==='function') addEventListener('message',e=>{if(e.data&&e.data.type==='vm-custom-event')try{callback(e.data.detail)}catch(err){send('vm-custom-error',{text:String(err)})}}); },
+      version:'5.3'
+    };
+    try{${safeCode}}catch(e){send('vm-custom-error',{text:String(e).slice(0,300)})}
   <\/script>`;
   document.body.append(frame);
 }
@@ -102,9 +110,13 @@ window.addEventListener("message",e=>{
   if(e.source!==document.getElementById("vmCustomJsSandbox")?.contentWindow)return;
   const d=e.data||{};
   if(d.type==="vm-custom-toast")toast(d.text);
+  if(d.type==="vm-custom-log")console.info("ViviMess custom JS:",d.text);
   if(d.type==="vm-custom-error")console.warn("Custom JS:",d.text);
   if(d.type==="vm-custom-theme"&&d.theme&&typeof d.theme==="object"){
     const root=document.documentElement;for(const [key,cssVar] of [["accent","--mint"],["background","--bg"],["panel","--panel"]])if(typeof d.theme[key]==="string"&&/^#[0-9a-f]{6}$/i.test(d.theme[key]))root.style.setProperty(cssVar,d.theme[key]);
+  }
+  if(d.type==="vm-custom-roblox-theme"&&d.theme&&typeof d.theme==="object"){
+    const root=document.documentElement;for(const [key,cssVar] of [["background","--roblox-bg"],["border","--roblox-border"],["button","--roblox-button"],["artwork","--roblox-art"]])if(typeof d.theme[key]==="string"&&/^#[0-9a-f]{6}$/i.test(d.theme[key]))root.style.setProperty(cssVar,d.theme[key]);
   }
 });
 function applySiteSettings(customCss=""){
@@ -116,10 +128,11 @@ function applySiteSettings(customCss=""){
   const name=document.querySelector(".logo b");if(name)name.textContent=siteSettings.appName||"ViviMess";document.querySelectorAll(".auth-card h1").forEach(x=>x.textContent=siteSettings.appName||"ViviMess");if(siteSettings.logo){document.querySelectorAll(".logo img,.auth-hat").forEach(x=>x.src=siteSettings.logo);}
   const tagline=document.querySelector(".auth-card .muted");if(tagline)tagline.textContent=siteSettings.tagline||"Messages, calls and screen sharing — all in one place.";
   const style=document.getElementById("userCustomCss")||document.head.appendChild(Object.assign(document.createElement("style"),{id:"userCustomCss"}));
-  const robloxCss = siteSettings.robloxTheme===false ? "" : `
-    .game-invite{background:linear-gradient(145deg,#142b42,#1b3b59)!important;border:2px solid #00e6a8!important;box-shadow:0 8px 28px #00d9a522!important}
-    .game-play-button{background:linear-gradient(135deg,#20c7a5,#1767e8)!important;border-radius:15px!important;box-shadow:0 5px 0 #104c9f!important}
-    .game-invite-art{background:linear-gradient(135deg,#1a3654,#315b7e)!important}
+  const robloxCss = siteSettings.robloxTheme===false ? `.game-invite{}` : `
+    :root{--roblox-bg:${siteSettings.robloxBg||"#142b42"};--roblox-border:${siteSettings.robloxBorder||"#00e6a8"};--roblox-button:${siteSettings.robloxButton||"#20c7a5"};--roblox-art:${siteSettings.robloxArt||"#1a3654"}}
+    .game-invite{background:linear-gradient(145deg,var(--roblox-bg),color-mix(in srgb,var(--roblox-bg),#315b7e 35%))!important;border:2px solid var(--roblox-border)!important;box-shadow:0 8px 28px color-mix(in srgb,var(--roblox-border),transparent 82%)!important}
+    .game-play-button{background:linear-gradient(135deg,var(--roblox-button),#1767e8)!important;border-radius:15px!important;box-shadow:0 5px 0 color-mix(in srgb,var(--roblox-button),#000 38%)!important}
+    .game-invite-art{background:linear-gradient(135deg,var(--roblox-art),color-mix(in srgb,var(--roblox-art),#315b7e 45%))!important}
     .game-invite-meta b{letter-spacing:-.02em}
   `;
   style.textContent=(customCss||"")+robloxCss;
@@ -140,6 +153,7 @@ async function loadStudio(){
     $("customCss").value=data.customCss||"";
     $("customJs").value=data.customJs||"";
     $("robloxTheme").checked=siteSettings.robloxTheme!==false;
+    $("robloxBg").value=siteSettings.robloxBg||"#142b42";$("robloxBorder").value=siteSettings.robloxBorder||"#00e6a8";$("robloxButton").value=siteSettings.robloxButton||"#20c7a5";$("robloxArt").value=siteSettings.robloxArt||"#1a3654";
     if($("brandName"))$("brandName").value=siteSettings.appName||"ViviMess";const stats=await api("/api/admin/overview");$("statUsers").textContent=stats.users;$("statMessages").textContent=stats.messages;$("statFriends").textContent=stats.friends;
     await loadCurrencies();
     await loadAdminModeration();
@@ -348,8 +362,8 @@ function gameInviteCard(url,title="Roblox game"){
   const brand=document.createElement("small");brand.textContent="ROBLOX";art.append(fallback,brand);
   const meta=document.createElement("div");meta.className="game-invite-meta";
   const heading=document.createElement("b");heading.textContent=title;
-  const creator=document.createElement("small");creator.className="game-invite-creator";creator.textContent="Roblox creator";
-  const desc=document.createElement("small");desc.textContent="Roblox experience";
+  const creator=document.createElement("small");creator.className="game-invite-creator";creator.textContent="Загрузка создателя…";
+  const desc=document.createElement("small");desc.textContent="Загрузка информации об игре…";
   meta.append(heading,creator,desc);info.append(art,meta);
   const play=document.createElement("button");play.type="button";play.className="game-play-button";play.setAttribute("aria-label","Play Roblox game");play.textContent="▶";
   play.onclick=()=>{const link=safeGameUrl(url);if(link)window.open(link,"_blank","noopener,noreferrer");};
@@ -359,12 +373,14 @@ function gameInviteCard(url,title="Roblox game"){
     const parsed=new URL(url),parts=parsed.pathname.split("/").filter(Boolean),placeId=parts.find((x,i)=>/^games?$/i.test(x))?parts[parts.findIndex(x=>/^games?$/i.test(x))+1]:parts[0];
     if(placeId&&/^\d+$/.test(placeId)){
       fetch("/api/roblox/experience/"+encodeURIComponent(placeId))
-        .then(r=>r.ok?r.json():null).then(data=>{
-          if(!data)return;
+        .then(async r=>{const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||"Roblox unavailable");return data;})
+        .then(data=>{
           if(data.name)heading.textContent=data.name;
           if(data.creator)creator.textContent="by "+data.creator;
+          desc.textContent=data.playing==null?"Roblox experience":"Playing now: "+data.playing.toLocaleString();
           if(data.thumbnail){const img=document.createElement("img");img.src=data.thumbnail;img.alt=data.name||"Roblox game cover";img.loading="lazy";img.referrerPolicy="no-referrer";img.onerror=()=>{img.remove();};art.replaceChildren(img);}
-        }).catch(()=>{});
+          else desc.textContent="Обложка пока недоступна";
+        }).catch(()=>{heading.textContent="Roblox experience";creator.textContent="Не удалось загрузить данные игры";desc.textContent="Проверь ссылку или попробуй позже";});
     }
   }catch{}
   return card;
@@ -616,7 +632,8 @@ $("saveCss").onclick=async()=>{
 $("clearCss").onclick=()=>{$("customCss").value="";$("saveCss").click();};
 $("saveJs").onclick=async()=>{try{await api("/api/admin/code",{method:"PATCH",body:JSON.stringify({css:$("customCss").value,js:$("customJs").value})});applyCustomJavaScript($("customJs").value);$("codeStatus").textContent="JavaScript saved for everyone.";}catch(e){$("codeStatus").textContent=e.message;}};
 $("clearJs").onclick=()=>{$("customJs").value="";$("saveJs").click();};
-$("saveRobloxTheme").onclick=async()=>{try{const r=await api("/api/admin/settings",{method:"PATCH",body:JSON.stringify({robloxTheme:$("robloxTheme").checked})});siteSettings={...siteSettings,...r.settings};applySiteSettings($("customCss").value);$("codeStatus").textContent="Roblox theme saved for everyone.";}catch(e){$("codeStatus").textContent=e.message;}};
+$("saveRobloxTheme").onclick=async()=>{try{const r=await api("/api/admin/settings",{method:"PATCH",body:JSON.stringify({robloxTheme:$("robloxTheme").checked,robloxBg:$("robloxBg").value,robloxBorder:$("robloxBorder").value,robloxButton:$("robloxButton").value,robloxArt:$("robloxArt").value})});siteSettings={...siteSettings,...r.settings};applySiteSettings($("customCss").value);$("codeStatus").textContent="Roblox theme and colors saved for everyone.";}catch(e){$("codeStatus").textContent=e.message;}};
+$("runJs").onclick=()=>{applyCustomJavaScript($("customJs").value);$("codeStatus").textContent="JavaScript preview started in isolated sandbox.";};
 if(token)boot();else {$("auth").classList.remove("hidden");loadSiteSettings();}
 
 /* ViviMess language switcher (RU / EN), saved per browser. */
