@@ -1,0 +1,14 @@
+ViviMess 4.1 — Calls, Paint & Preview reliability update
+
+Changes:
+- Creator Studio tab preview now explicitly unhides, displays and scrolls the preview into view. Preview elements now apply width, height, rotation, font size and corner radius consistently.
+- Paint drawing export uses compressed JPEG and checks the payload size before sending, avoiding Socket.IO's default ~1 MB message limit for large PNG drawings. Pointer cancellation is handled and touch drawing is supported by CSS.
+- Voice call setup uses more STUN discovery endpoints, 96 kbps Opus target, echo cancellation/noise suppression/auto gain control, and falls back to the system microphone if a saved device ID is no longer available.
+- Call status now gives clearer connection and ICE failure diagnostics. The call UI has a subtle animated presence effect and improved controls.
+
+Important:
+- STUN cannot guarantee connectivity across every NAT/firewall. For reliable calls between restrictive networks, configure a TURN server in Settings > Voice & devices. Do not use a public TURN server without understanding its privacy and availability terms.
+- Calls are voice-only; screen sharing remains a separate negotiated video track. No camera video is added.
+- Browser microphone permission and HTTPS are required.
+- Preview is a local preview only. It does not deploy or save a page; use Save page for that.
+- Test calls with two separate accounts/devices after deployment. JavaScript syntax was checked; end-to-end WebRTC was not tested in this environment.

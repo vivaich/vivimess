@@ -115,3 +115,105 @@ button,input,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit;
 /* ViviMess 3.0 compact studio, presence, paint and responsive editor */
 .sidebar .nav{min-height:38px;padding:8px 12px;font-size:14px}.nav-label{margin-top:16px}.side-bottom{gap:8px}.presence-select{width:100%;background:#111c29;color:#dce9f8;border:1px solid #34485e;border-radius:10px;padding:8px;font-size:12px}.user-card{min-height:66px;padding:12px;border-radius:14px;display:flex;align-items:center;gap:12px;max-width:100%;height:auto}.user-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.quest-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.quest-card{display:flex;flex-direction:column;min-width:0;overflow:hidden;border-radius:14px}.quest-cover{width:100%;height:120px;object-fit:cover}.quest-copy{padding:12px}.quest-copy p{margin:6px 0;font-size:13px}.quest-action{margin-top:10px}.quest-action button{width:100%;padding:9px 12px}.studio-panel{padding:16px;margin-bottom:14px}.studio-panel h3{font-size:16px;margin:0 0 8px}.studio-panel label{font-size:12px}.market-form{padding:12px;gap:10px}.market-form input,.market-form select,.market-form textarea{min-height:38px}.profile-form input[type=file]{display:block;width:100%;padding:12px;border:1px dashed #496078;border-radius:12px;background:#111c29;color:#dce9f8}.profile-form input[type=color]{height:44px;padding:5px;cursor:pointer;background:#111c29;border:1px solid #496078;border-radius:10px}.profile-form label{gap:7px}.gui-workspace{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:12px}.gui-properties{position:sticky;top:12px;align-self:start;background:#111c29;border:1px solid #34485e;border-radius:12px;padding:12px;font-size:12px}.builder-blocks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}.builder-block{padding:12px;border-radius:12px}.group-chat{margin-top:14px;border-top:1px solid #34485e;padding-top:12px}.group-chat .messages{height:280px;max-height:45vh}.paint-modal{position:fixed;inset:0;z-index:1000;background:#050a11dd;display:grid;place-items:center;padding:18px}.paint-window{width:min(980px,96vw);background:#172433;border:1px solid #38506a;border-radius:18px;padding:16px;box-shadow:0 24px 90px #0009}.paint-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}.paint-window canvas{display:block;width:100%;height:auto;max-height:65vh;object-fit:contain;background:#fff;border-radius:10px;touch-action:none;cursor:crosshair}.online-dot{width:9px;height:9px;border-radius:50%;background:#35d99d;display:inline-block}.offline-dot{background:#667487}.vm-language-wrap select{background:#111c29;color:#e8f1ff;border:1px solid #34485e;border-radius:8px;padding:6px}.market-card,.quest-card,.admin-row{min-width:0}.conversation-head{min-height:62px}.message-tools{gap:8px}.message-tools input{min-width:120px}.hidden{display:none!important}
 @media(max-width:800px){.gui-workspace{grid-template-columns:1fr}.gui-properties{position:static}.quest-list{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}.quest-cover{height:95px}.paint-window{padding:10px}.paint-window canvas{max-height:55vh}}
+
+/* ViviMess 3.1 compact UI polish */
+.studio-categories{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px;padding:8px;background:#101b28;border:1px solid #30445a;border-radius:14px;position:sticky;top:0;z-index:5}
+.studio-categories button{background:#24364a;color:#cbd8e8;border:1px solid transparent;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:800}
+.studio-categories button.active{background:#087f72;color:#fff;border-color:#25d8b0}
+.studio-filter-hidden{display:none!important}
+.studio-grid{align-items:start;grid-auto-rows:max-content}
+.studio-panel{min-width:0;align-self:start}
+.studio-intro{margin-bottom:10px}
+#view-studio .studio-intro h2{display:none}
+.user-grid{align-content:start;align-items:start;grid-auto-rows:max-content}
+.user-card{height:auto!important;min-height:58px;max-height:82px;width:100%;max-width:390px;align-self:start;justify-self:start;padding:9px 11px}
+#friendsGrid .user-card,#searchResults .user-card,#friendRequests .user-card{min-height:58px;max-height:76px}
+#friendsGrid,#searchResults,#friendRequests{align-content:start;grid-auto-rows:max-content}
+/* Friendly upload controls instead of browser-default file fields */
+.profile-form input[type=file],.market-form input[type=file],#currencyForm input[type=file],#brandLogo{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+.profile-form label:has(input[type=file]),.market-form label:has(input[type=file]),#currencyForm label:has(input[type=file]){position:relative;display:flex;flex-direction:column;gap:7px}
+.profile-form label:has(#profileAvatarFile)::after,.profile-form label:has(#profileBannerFile)::after,.market-form label:has(#shopItemMedia)::after,#currencyForm label:has(#currencyLogo)::after{content:'＋ Выбрать файл';display:inline-flex;align-items:center;justify-content:center;width:max-content;max-width:100%;padding:9px 14px;border-radius:10px;background:#263b50;border:1px solid #426078;color:#e8f3ff;font-weight:800;font-size:12px;cursor:pointer;transition:.15s}
+.profile-form label:has(input[type=file]):hover::after,.market-form label:has(input[type=file]):hover::after,#currencyForm label:has(input[type=file]):hover::after{background:#087f72;border-color:#25d8b0}
+.profile-form input[type=color]{width:100%;min-width:70px;height:42px;padding:4px;border-radius:10px;cursor:pointer}
+#profileEquippedFrame,#profileEquippedBanner{appearance:none;background:#111c29 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2328e0b2' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;color:#e8f1ff;border:1px solid #3b536b;border-radius:10px;padding:11px 38px 11px 12px;min-height:42px;width:100%;font-weight:700}
+#profileEquippedFrame:focus,#profileEquippedBanner:focus{outline:2px solid #28e0b2;outline-offset:2px}
+@media(max-width:700px){.studio-categories{position:static}.studio-grid{grid-template-columns:1fr}.user-card{max-width:100%}}
+/* Uploaded frame artwork overlays the avatar; it is not replaced by a generic outline. */
+.avatar.avatar-framed{position:relative;overflow:visible;isolation:isolate}
+.avatar.avatar-framed .avatar-photo{position:relative;z-index:1;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.avatar.avatar-framed .avatar-fallback{position:relative;z-index:1}
+.avatar.avatar-framed .avatar-frame-art{position:absolute;z-index:3;inset:-13%;width:126%;height:126%;object-fit:fill;pointer-events:none;user-select:none}
+.avatar.big.avatar-framed .avatar-frame-art{inset:-12%;width:124%;height:124%}
+.avatar.has-profile-frame:not(:has(.avatar-frame-art)){outline:2px solid #39bfff;outline-offset:2px}
+/* Compact friend cards and consistent upload buttons */
+#friendsGrid .user-card,#searchResults .user-card,#friendRequests .user-card{height:auto!important;min-height:54px!important;max-height:68px!important;padding:8px 10px!important;border-radius:12px!important;}
+.profile-form label:has(#profileAvatarFile)::after,.profile-form label:has(#profileBannerFile)::after{content:'＋ Выбрать изображение';min-height:38px;border-radius:11px;background:linear-gradient(135deg,#087f72,#176c83);box-shadow:0 3px 0 #07584f}
+.profile-form label:has(#profileAvatarFile),.profile-form label:has(#profileBannerFile){margin:12px 0}
+
+/* ViviMess 4.0: compact, consistent Creator Studio and profile controls */
+#view-studio .topbar h2{font-size:0;line-height:0;margin:0}
+#view-studio .studio-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px}
+#view-studio .studio-intro .eyebrow{font-size:10px;letter-spacing:2px}
+#view-studio .studio-categories{margin:8px 0 14px;gap:6px;padding:7px}
+#view-studio .studio-categories button{font-size:11px;padding:7px 10px;border-radius:9px}
+#view-studio .studio-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+#view-studio .studio-panel{padding:13px;border-radius:14px;margin:0;min-width:0}
+#view-studio .studio-panel h3{font-size:15px}
+#view-studio .studio-panel p{font-size:12px;line-height:1.45}
+#view-studio .studio-panel label{font-size:11px;gap:5px;margin:9px 0}
+#view-studio .studio-panel input:not([type=checkbox]):not([type=file]),#view-studio .studio-panel select,#view-studio .studio-panel textarea{min-height:34px;padding:8px 10px;font-size:12px}
+#view-studio .studio-panel button{font-size:12px;padding:8px 11px;border-radius:9px}
+#view-studio .studio-panel .market-form{gap:8px;padding:10px}
+#view-studio .studio-panel .admin-row{padding:8px;border-radius:9px;gap:8px}
+#view-studio .studio-panel .admin-moderation-grid{gap:10px}
+#view-studio .studio-panel .toggle-row{padding:9px 0}
+#view-studio .studio-panel .page-editor{padding:10px}
+#view-studio .studio-panel .gui-workspace{grid-template-columns:minmax(0,1fr) 190px;gap:9px}
+#view-studio .studio-panel .gui-properties{padding:9px}
+#view-studio .studio-panel .builder-block{padding:9px;gap:6px}
+#view-studio .studio-panel .builder-blocks{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+#view-studio .studio-panel[data-studio-category="design"],#view-studio .studio-panel[data-studio-category="shop"],#view-studio .studio-panel[data-studio-category="community"],#view-studio .studio-panel[data-studio-category="builder"],#view-studio .studio-panel[data-studio-category="system"]{align-self:start}
+#friendsGrid,#searchResults,#friendRequests{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}
+#friendsGrid .user-card,#searchResults .user-card,#friendRequests .user-card{width:min(100%,310px)!important;min-width:0!important;min-height:56px!important;max-height:64px!important;height:64px!important;padding:7px 9px!important;display:flex!important;align-items:center!important;overflow:hidden}
+#friendsGrid .user-card .avatar,#searchResults .user-card .avatar,#friendRequests .user-card .avatar{width:38px;height:38px;border-radius:11px}
+#friendsGrid .user-card .person-info,#searchResults .user-card .person-info,#friendRequests .user-card .person-info{flex:1;min-width:0}
+#friendsGrid .user-card button,#searchResults .user-card button,#friendRequests .user-card button{flex:none;white-space:nowrap;padding:6px 8px;font-size:10px}
+/* Native file input is visually replaced by a consistent clickable label */
+.profile-form label:has(#profileAvatarFile),.profile-form label:has(#profileBannerFile),.market-form label:has(#shopItemMedia),#currencyForm label:has(#currencyLogo){display:flex;flex-direction:column;align-items:flex-start;gap:7px;cursor:pointer}
+.profile-form label:has(#profileAvatarFile)::after{content:'＋ Выбрать аватар';}
+.profile-form label:has(#profileBannerFile)::after{content:'＋ Выбрать баннер';}
+.market-form label:has(#shopItemMedia)::after{content:'＋ Выбрать изображение / GIF / видео';}
+#currencyForm label:has(#currencyLogo)::after{content:'＋ Выбрать логотип';}
+.profile-form label:has(input[type=file])::after,.market-form label:has(input[type=file])::after,#currencyForm label:has(input[type=file])::after{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 13px;border-radius:10px;background:linear-gradient(135deg,#087f72,#176c83);border:1px solid #35d9bd;color:#fff;font-weight:800;font-size:12px;box-shadow:0 3px 0 #07584f;cursor:pointer}
+.profile-form label:has(input[type=file]):hover::after,.market-form label:has(input[type=file]):hover::after,#currencyForm label:has(input[type=file]):hover::after{filter:brightness(1.12)}
+/* Frame art must be transparent PNG/GIF to preserve the selected avatar underneath. */
+.avatar.avatar-framed{overflow:visible!important;position:relative;isolation:isolate}
+.avatar.avatar-framed .avatar-photo,.avatar.avatar-framed .avatar-fallback{position:relative;z-index:1;border-radius:inherit}
+.avatar.avatar-framed .avatar-frame-art{position:absolute;z-index:4;inset:-17%;width:134%;height:134%;object-fit:contain;pointer-events:none}
+.avatar.big.avatar-framed .avatar-frame-art{inset:-17%;width:134%;height:134%}
+@media(max-width:850px){#view-studio .studio-grid{grid-template-columns:1fr}#view-studio .studio-panel .gui-workspace{grid-template-columns:1fr}#view-studio .studio-panel .gui-properties{position:static}}
+/* 4.1 call, paint and preview reliability polish */
+.page-editor{max-height:calc(100vh - 130px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.page-preview{display:block;width:100%;min-height:100px;max-height:55vh;overflow:auto;position:relative;z-index:2;background:#0b1420;border:1px solid #38cfae;box-shadow:0 12px 35px #0005}
+.page-preview.hidden{display:none!important}
+#pagePreviewContent{display:grid;gap:10px;min-height:80px;padding:8px}
+#pagePreviewContent:empty:after{content:"Добавьте блоки, затем нажмите «Предпросмотр вкладки»";display:block;color:#9fb2c7;padding:20px;text-align:center}
+.page-preview .custom-element{max-width:100%;min-width:0;box-sizing:border-box;overflow-wrap:anywhere;transform-origin:center}
+.page-preview .custom-element img,.page-preview .custom-element video{max-width:100%;height:auto;object-fit:contain}
+.paint-window{width:min(1000px,96vw);max-height:94vh;overflow:auto;background:#152435;border:1px solid #3a586e;border-radius:20px;padding:16px;box-shadow:0 24px 80px #000a}
+#paintCanvas{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#fff;border:1px solid #3b5268;border-radius:12px;touch-action:none;cursor:crosshair}
+.paint-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
+.paint-tools input[type=range]{width:min(180px,30vw);accent-color:#28dcb4}
+.call-window{max-height:94vh;overflow:auto}
+.video-stage{min-height:210px}
+.call-hint{pointer-events:none}
+@media(max-width:600px){.page-editor{max-height:none}.paint-window{padding:10px}.paint-tools>*{flex:1}.paint-tools input[type=range]{min-width:100px}}
+/* ViviMess 4.1 — calm neon vibe */
+.call-window{background:radial-gradient(ellipse at 50% 0%,#20384c 0%,#142131 58%,#101b29 100%);border-color:#2d655f}
+.call-avatar-large{animation:vm-call-pulse 2.4s ease-in-out infinite}
+@keyframes vm-call-pulse{0%,100%{box-shadow:0 10px 35px #0bc5a333,0 0 0 0 #27d9b222}50%{box-shadow:0 10px 35px #0bc5a355,0 0 0 13px #27d9b200}}
+.call-controls #hangupBtn{background:#e94c62;color:#fff}.call-controls #muteBtn,.call-controls #shareBtn{background:#263c50;color:#eaf5ff}
+.paint-modal{z-index:40}.paint-window{color:#edf6ff}.paint-tools button{min-height:38px}
+
+/* 4.2 Roblox experience card metadata and cover */
+.game-invite-creator{font-size:11px;color:#27d9ae!important;font-weight:700}.game-invite-art img{display:block;width:100%;height:100%;object-fit:cover;border-radius:20px}.game-invite-art{position:relative}
