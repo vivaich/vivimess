@@ -28,6 +28,8 @@
     <button class="nav" data-view="friends">♧ <span>Friends</span></button>
     <button class="nav" data-view="profile">◉ <span>My profile</span></button>
     <button class="nav" data-view="settings">⚙ <span>Settings</span></button>
+    <button class="nav" data-view="shop">▣ <span>Shop</span></button>
+    <button class="nav" data-view="quests">✦ <span>Quests</span></button>
     <button class="nav hidden" id="studioNav" data-view="studio">✦ <span>Creator Studio</span></button>
     <div id="customNav"></div>
     <div class="side-bottom"><div class="mini-user" id="miniUser"></div><button id="logout" class="nav">↪ <span>Sign out</span></button></div>
@@ -41,8 +43,8 @@
           <div id="emptyChat" class="empty"><div class="empty-icon">✦</div><h3>Your next conversation starts here</h3><p>Choose a friend on the left to send a message or start a call.</p></div>
           <div id="chatActive" class="hidden chat-active">
             <div class="conversation-head"><div id="chatPerson" class="person"></div><div class="call-actions"><button id="audioCall" class="soft">☎ Voice call</button></div></div>
-            <div class="moderation-notice">Notice: conversations may be reviewed by administrators for moderation. Calls are not audio-recorded.</div><div id="messages" class="messages"></div>
-            <form id="messageForm" class="composer"><input id="messageInput" placeholder="Write a message..." maxlength="2000" autocomplete="off"><input id="chatFile" type="file" accept="image/*,video/*" multiple hidden><button type="button" id="attachBtn" class="soft" title="Photo or video">＋</button><button type="button" id="gifBtn" class="soft">GIF</button><button class="primary" type="submit">Send ➤</button></form><div id="pendingFiles" class="pending-files hidden"></div><div id="gifPanel" class="gif-panel hidden"><div class="panel-head"><b>Your GIFs</b><label class="soft gif-upload">＋ Add GIF<input id="gifUpload" type="file" accept="image/gif" hidden></label><button id="closeGif" class="soft">Close</button></div><div id="gifGrid" class="gif-grid"></div></div>
+            <div class="moderation-notice">Notice: conversations may be reviewed by administrators for moderation. Calls are not audio-recorded.</div><div class="message-tools"><input id="messageSearch" placeholder="Search messages…" aria-label="Search messages"><select id="messageFilter" aria-label="Filter messages"><option value="all">All messages</option><option value="image">Images</option><option value="video">Videos</option><option value="file">Files / mods</option></select><button id="clearMessageSearch" class="soft" type="button">Clear</button></div><div id="messages" class="messages"></div>
+            <form id="messageForm" class="composer"><input id="messageInput" placeholder="Write a message..." maxlength="2000" autocomplete="off"><input id="chatFile" type="file" accept="image/*,video/*,.jar,.zip,.mrpack,.rar,.7z,.schem,.schematic,.mcaddon,.mcpack" multiple hidden><button type="button" id="attachBtn" class="soft" title="Photo or video">＋</button><button type="button" id="gifBtn" class="soft">GIF</button><button class="primary" type="submit">Send ➤</button></form><div id="pendingFiles" class="pending-files hidden"></div><div id="gifPanel" class="gif-panel hidden"><div class="panel-head"><b>Your GIFs</b><label class="soft gif-upload">＋ Add GIF<input id="gifUpload" type="file" accept="image/gif" hidden></label><button id="closeGif" class="soft">Close</button></div><div id="gifGrid" class="gif-grid"></div></div>
           </div>
         </div>
       </div>
@@ -51,6 +53,8 @@
       <div class="panel section-panel"><div class="panel-head"><div><h3>Find your people</h3><p class="muted">Search by username or display name.</p></div></div><input id="userSearch" class="search" placeholder="Search creators..."><div id="searchResults" class="user-grid"></div></div>
       <div class="panel section-panel"><h3>Friend requests</h3><div id="friendRequests" class="user-grid"></div></div><div class="panel section-panel"><h3>Your friends</h3><div id="friendsGrid" class="user-grid"></div></div>
     </section>
+    <section id="view-shop" class="view hidden"><div class="panel section-panel"><div class="panel-head"><div><h3>ViviMess Shop</h3><p class="muted">Frames and animated profile banners</p></div></div><div id="shopItems" class="market-grid"></div></div></section>
+    <section id="view-quests" class="view hidden"><div class="panel section-panel"><div class="panel-head"><div><h3>Quests</h3><p class="muted">Complete quests and earn currency</p></div></div><div id="questItems" class="quest-list"></div></div></section>
     <section id="view-profile" class="view hidden">
       <div class="panel profile-panel"><div class="profile-banner" id="profileBanner"><span class="banner-placeholder">Profile banner</span></div><div class="profile-content"><div class="avatar big" id="profileAvatar">V</div><h3 id="profileHeading">Your profile</h3><p class="muted">Make your creator profile yours.</p>
         <form id="profileForm" class="profile-form">
@@ -60,6 +64,8 @@
           <label>Profile banner <small class="muted">Image, animated GIF or video · up to 6 MB</small><input id="profileBannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"></label>
           <label>Or choose a banner color <input id="profileBannerColor" type="color" value="#087c70"></label>
           <label>About you<textarea id="profileBio" maxlength="160" rows="3"></textarea></label>
+          <label>Equipped frame<select id="profileEquippedFrame"><option value="">None</option></select></label>
+          <label>Equipped banner<select id="profileEquippedBanner"><option value="">Use uploaded banner</option></select></label>
           <button class="primary">Save profile</button>
         </form><p id="profileMessage" class="success"></p>
       </div></div>
@@ -152,6 +158,27 @@
           </div>
         </div>
         <div class="panel studio-panel">
+          <h3>Shop & quests manager</h3><p class="muted">Only administrators can create and remove shop items and quests.</p>
+          <form id="shopItemForm" class="market-form"><h4>＋ Add shop item</h4>
+            <label>Item name<input id="shopItemName" maxlength="60" required></label>
+            <label>Description<input id="shopItemDesc" maxlength="180"></label>
+            <label>Price<input id="shopItemPrice" type="number" min="1" step="1" required></label>
+            <label>Currency<select id="shopItemCurrency"></select></label>
+            <label>Type<select id="shopItemType"><option value="frame">Profile frame</option><option value="banner">Profile banner</option></select></label>
+            <label>Image / animated GIF / video<input id="shopItemMedia" type="file" accept="image/*,video/mp4,video/webm" required></label>
+            <button class="primary">＋ Add item</button>
+          </form><div id="adminShopItems" class="admin-list"></div>
+          <form id="questForm" class="market-form"><h4>＋ Add quest</h4>
+            <label>Quest title<input id="questTitle" maxlength="80" required></label>
+            <label>Description<input id="questDesc" maxlength="220"></label>
+            <label>Reward amount<input id="questReward" type="number" min="1" step="1" required></label>
+            <label>Reward currency<select id="questCurrency"></select></label>
+            <label>Task link (optional, HTTPS)<input id="questLink" type="url" placeholder="https://..."></label>
+            <label>Quest cover image / GIF (optional)<input id="questImage" type="file" accept="image/*"></label>
+            <button class="primary">＋ Add quest</button>
+          </form><div id="adminQuests" class="admin-list"></div><h4>Quest submissions to review</h4><div id="adminQuestSubmissions" class="admin-list"></div><p id="marketAdminStatus" class="success"></p>
+        </div>
+        <div class="panel studio-panel">
           <h3>Community moderation</h3>
           <p class="muted">Transparent moderation tools. Users should be informed that administrators may review reported conversations. Calls are logged as metadata only; audio is never recorded.</p>
           <div class="admin-moderation-grid">
@@ -185,7 +212,7 @@
 <div id="callModal" class="call-modal hidden">
   <div class="call-window">
     <div class="call-top"><div><span class="eyebrow">VIVIMESS LIVE</span><h3 id="callTitle">Call</h3></div><span class="live-tag"><i></i> LIVE</span></div>
-    <div class="video-stage audio-stage"><video id="remoteVideo" autoplay playsinline></video><audio id="remoteAudio" autoplay playsinline></audio><div id="callHint" class="call-hint">Waiting for the other person…</div><div class="audio-call-avatar">☎</div></div>
+    <div class="call-participant"><div class="call-avatar-large">☎</div><div><b id="callPeerName">Voice call</b><small id="callPeerStatus">Connecting securely…</small></div></div><div class="video-stage audio-stage"><video id="remoteVideo" autoplay playsinline></video><audio id="remoteAudio" autoplay playsinline></audio><div id="callHint" class="call-hint">Waiting for the other person…</div><div class="audio-call-avatar">☎</div></div><div class="call-volume"><label for="peerVolume">Other person volume</label><input id="peerVolume" type="range" min="0" max="100" value="100"><span id="peerVolumeValue">100%</span></div>
     <button id="enableCallSound" class="primary hidden" type="button">Enable sound</button><div class="call-controls"><button id="muteBtn" class="soft">🎙 Mute</button><button id="shareBtn" class="soft">▧ Share screen</button><button id="hangupBtn" class="danger">End call</button></div>
   </div>
 </div>

@@ -16,7 +16,7 @@ const DB_FILE = path.join(__dirname, "data.json");
 app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [] };
+let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [], shopItems: [], quests: [] };
 try { if (fs.existsSync(DB_FILE)) db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) }; } catch (e) {
   console.error("Could not read data.json. Starting with an empty database.", e.message);
 }
@@ -40,6 +40,8 @@ if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
 if (!Array.isArray(db.customPages)) db.customPages = [];
 if (!Array.isArray(db.gifLibrary)) db.gifLibrary = [];
 if (!Array.isArray(db.callLogs)) db.callLogs = [];
+if (!Array.isArray(db.shopItems)) db.shopItems = [];
+if (!Array.isArray(db.quests)) db.quests = [];
 // Everyone starts with zero balance. The default currency is named Чекушня.
 if (!db.currencies.length) db.currencies.push({ id: "default", name: "Чекушня", logo: "", logoType: "image", createdAt: Date.now() });
 for (const user of db.users) {
@@ -72,7 +74,7 @@ function tokenFor(user) {
   return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: "7d" });
 }
 function safeUser(user) {
-  return { id: user.id, username: user.username, displayName: user.displayName, bio: user.bio || "", avatar: user.avatar || "", banner: user.banner || "", bannerColor: user.bannerColor || "#087c70", status: user.status || "Online", role: user.role || "user", balances: user.balances || {} };
+  return { id: user.id, username: user.username, displayName: user.displayName, bio: user.bio || "", avatar: user.avatar || "", banner: user.banner || "", bannerColor: user.bannerColor || "#087c70", status: user.status || "Online", role: user.role || "user", balances: user.balances || {}, equippedFrame:user.equippedFrame||"", equippedBanner:user.equippedBanner||"" };
 }
 function auth(req, res, next) {
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
@@ -121,7 +123,7 @@ app.put("/api/admin/pages/:id", auth, requireAdmin, (req,res) => {
   const page=db.customPages.find(p=>p.id===req.params.id); if(!page) return res.status(404).json({error:"Page not found."});
   if(req.body.title!==undefined) page.title=String(req.body.title).trim().slice(0,32)||page.title;
   if(req.body.published!==undefined) page.published=!!req.body.published;
-  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency","code"].includes(e.action)?e.action:"none",code:String(e.code||"").slice(0,12000),target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
+  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency","code","game-link"].includes(e.action)?e.action:"none",code:String(e.code||"").slice(0,12000),target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
   save(); res.json({page});
 });
 app.delete("/api/admin/pages/:id", auth, requireAdmin, (req,res)=>{db.customPages=db.customPages.filter(p=>p.id!==req.params.id);save();res.json({ok:true});});
@@ -130,6 +132,49 @@ app.post("/api/gifs", auth, (req,res)=>{const data=String(req.body.data||"");if(
 app.get("/api/gifs", auth, (req,res)=>res.json({gifs:db.gifLibrary.filter(g=>g.owner===req.user.id).map(g=>({id:g.id,data:g.data}))}));
 
 // Currency management: only an existing administrator can create/edit currencies or change balances.
+// Shop and quest data: purchases and rewards are verified server-side.
+app.get("/api/market", auth, (req,res)=>{
+ const user=db.users.find(u=>u.id===req.user.id);
+ const submissions=user.questSubmissions||{};
+ res.json({items:db.shopItems.map(x=>({...x,owned:(user.ownedItems||[]).includes(x.id),equipped:user.equippedFrame===x.id||user.equippedBanner===x.id})),quests:db.quests.map(q=>({...q,submissionStatus:submissions[q.id]?.status||"",completed:!!submissions[q.id]?.claimed})),currencies:db.currencies.map(c=>({id:c.id,name:c.name,balance:Number(user.balances?.[c.id]||0)}))});
+});
+app.post("/api/quests/:id/submit", auth, (req,res)=>{
+ const q=db.quests.find(x=>x.id===req.params.id);if(!q)return res.status(404).json({error:"Quest not found."});if(!q.link)return res.status(400).json({error:"This quest has no action link."});
+ const user=db.users.find(u=>u.id===req.user.id);user.questSubmissions=user.questSubmissions||{};const old=user.questSubmissions[q.id];
+ if(old?.status==="approved"||old?.status==="claimed")return res.status(409).json({error:"This quest is already approved."});
+ user.questSubmissions[q.id]={status:"pending",submittedAt:Date.now()};save();res.json({ok:true,status:"pending"});
+});
+app.get("/api/admin/quest-submissions", auth, requireAdmin, (req,res)=>{
+ const rows=[];for(const u of db.users){for(const [questId,sub] of Object.entries(u.questSubmissions||{})){if(sub.status==="pending"){const q=db.quests.find(x=>x.id===questId);if(q)rows.push({questId,userId:u.id,username:u.username,displayName:u.displayName,questTitle:q.title,submittedAt:sub.submittedAt});}}}rows.sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0));res.json({submissions:rows});
+});
+app.post("/api/admin/quests/:id/review/:userId", auth, requireAdmin, (req,res)=>{
+ const q=db.quests.find(x=>x.id===req.params.id),u=db.users.find(x=>x.id===req.params.userId);if(!q||!u)return res.status(404).json({error:"Quest or user not found."});
+ u.questSubmissions=u.questSubmissions||{};const sub=u.questSubmissions[q.id];if(!sub||sub.status!=="pending")return res.status(409).json({error:"No pending submission for this quest."});
+ sub.status="approved";sub.reviewedAt=Date.now();sub.reviewedBy=req.user.id;save();res.json({ok:true});
+});
+app.post("/api/shop/:id/buy", auth, (req,res)=>{
+ const user=db.users.find(u=>u.id===req.user.id), item=db.shopItems.find(x=>x.id===req.params.id);
+ if(!item)return res.status(404).json({error:"Item not found."});
+ user.ownedItems=user.ownedItems||[]; if(user.ownedItems.includes(item.id))return res.status(409).json({error:"You already own this item."});
+ const currency=db.currencies.find(c=>c.id===item.currencyId);if(!currency)return res.status(400).json({error:"Item currency no longer exists."});
+ user.balances=user.balances||{};const balance=Number(user.balances[item.currencyId]||0);if(balance<item.price)return res.status(400).json({error:"Not enough currency."});
+ user.balances[item.currencyId]=balance-item.price;user.ownedItems.push(item.id);save();res.json({ok:true,balance:user.balances[item.currencyId],item:item.name});
+});
+app.post("/api/shop/equip", auth, (req,res)=>{
+ const user=db.users.find(u=>u.id===req.user.id),item=db.shopItems.find(x=>x.id===String(req.body.itemId||''));
+ if(!item||!(user.ownedItems||[]).includes(item.id))return res.status(403).json({error:"You do not own this item."});
+ const key=item.type==='frame'?'equippedFrame':'equippedBanner';user[key]=user[key]===item.id?'':item.id;save();res.json({ok:true,user:safeUser(user)});
+});
+app.post("/api/quests/:id/claim", auth, (req,res)=>{
+ const user=db.users.find(u=>u.id===req.user.id),q=db.quests.find(x=>x.id===req.params.id);
+ if(!q)return res.status(404).json({error:"Quest not found."});user.questSubmissions=user.questSubmissions||{};const sub=user.questSubmissions[q.id];
+ if(!sub||sub.status!=="approved")return res.status(403).json({error:"The administrator must approve your quest first."});
+ const c=db.currencies.find(x=>x.id===q.currencyId);if(!c)return res.status(400).json({error:"Reward currency no longer exists."});user.balances=user.balances||{};user.balances[q.currencyId]=Number(user.balances[q.currencyId]||0)+q.reward;sub.status="claimed";sub.claimedAt=Date.now();save();res.json({ok:true,reward:q.reward,currency:c.name});
+});
+app.post("/api/admin/shop", auth, requireAdmin, (req,res)=>{const b=req.body||{},name=String(b.name||'').trim().slice(0,60),price=Number(b.price),type=b.type==='banner'?'banner':'frame';if(!name||!Number.isInteger(price)||price<1||price>100000000||!db.currencies.some(c=>c.id===b.currencyId)||!/^data:(image\/(png|jpeg|webp|gif)|video\/(mp4|webm));base64,/.test(String(b.media||''))||String(b.media).length>12*1024*1024)return res.status(400).json({error:'Check item name, price, currency and media (max 8 MB).'});const item={id:require('crypto').randomUUID(),name,description:String(b.description||'').slice(0,180),price,currencyId:b.currencyId,type,media:b.media,mediaType:String(b.media).startsWith('data:video/')?'video':String(b.media).startsWith('data:image/gif')?'gif':'image',createdAt:Date.now()};db.shopItems.push(item);save();res.json({item});});
+app.delete("/api/admin/shop/:id", auth, requireAdmin, (req,res)=>{const item=db.shopItems.find(x=>x.id===req.params.id);if(!item)return res.status(404).json({error:'Item not found.'});db.shopItems=db.shopItems.filter(x=>x.id!==item.id);for(const u of db.users){u.ownedItems=(u.ownedItems||[]).filter(id=>id!==item.id);if(u.equippedFrame===item.id)u.equippedFrame='';if(u.equippedBanner===item.id)u.equippedBanner='';}save();res.json({ok:true});});
+app.post("/api/admin/quests", auth, requireAdmin, (req,res)=>{const b=req.body||{},title=String(b.title||'').trim().slice(0,80),reward=Number(b.reward),image=String(b.image||''),link=String(b.link||'').trim().slice(0,1000);if(!title||!Number.isInteger(reward)||reward<1||reward>100000000||!db.currencies.some(c=>c.id===b.currencyId)||(image&&!/^data:image\/(png|jpeg|webp|gif);base64,/.test(image))||image.length>12*1024*1024||(link&&!/^https:\/\//i.test(link)))return res.status(400).json({error:'Check quest title, reward, currency, optional image and HTTPS link.'});const q={id:require('crypto').randomUUID(),title,description:String(b.description||'').slice(0,220),reward,currencyId:b.currencyId,image,link,createdAt:Date.now()};db.quests.push(q);save();res.json({quest:q});});
+app.delete("/api/admin/quests/:id", auth, requireAdmin, (req,res)=>{db.quests=db.quests.filter(q=>q.id!==req.params.id);save();res.json({ok:true});});
 app.get("/api/currencies", auth, (req, res) => {
   const user = db.users.find(u => u.id === req.user.id);
   res.json({ currencies: db.currencies.map(c => ({ id:c.id, name:c.name, logo:c.logo || "", logoType:c.logoType || "image", balance:Number(user?.balances?.[c.id] || 0) })) });
@@ -280,6 +325,9 @@ app.patch("/api/profile", auth, (req, res) => {
     user.displayName = nextName;
   }
   if (req.body.bio !== undefined) user.bio = String(req.body.bio).trim().slice(0, 160);
+  if (req.body.equippedFrame !== undefined) { const id=String(req.body.equippedFrame||''); if(id && (!db.shopItems.some(x=>x.id===id&&x.type==='frame') || !(user.ownedItems||[]).includes(id))) return res.status(403).json({error:'You do not own this frame.'}); user.equippedFrame=id; }
+  if (req.body.equippedBanner !== undefined) { const id=String(req.body.equippedBanner||''); if(id && (!db.shopItems.some(x=>x.id===id&&x.type==='banner') || !(user.ownedItems||[]).includes(id))) return res.status(403).json({error:'You do not own this banner.'}); user.equippedBanner=id; }
+
   if (req.body.avatar !== undefined) {
     const avatar = String(req.body.avatar || "").trim();
     if (avatar.length > 10 * 1024 * 1024) return res.status(400).json({ error: "Avatar is too large. Maximum 7 MB." });
@@ -329,7 +377,7 @@ io.on("connection", socket => {
   socket.on("message:send", data => {
     const to = String(data.to || "");
     const text = String(data.text || "").trim().slice(0, 2000);
-    const media = data.media && typeof data.media.data === "string" && data.media.data.length <= 12*1024*1024 && /^data:(image\/(png|jpeg|webp|gif)|video\/(mp4|webm|quicktime));base64,/i.test(data.media.data) ? {type:String(data.media.type||"image"),name:String(data.media.name||"File").slice(0,100),data:data.media.data} : null;
+    const mediaName=String(data.media?.name||"File").slice(0,100); const mediaExt=mediaName.split(".").pop().toLowerCase(); const modExts=["jar","zip","mrpack","rar","7z","schem","schematic","mcaddon","mcpack"]; const isMediaData=typeof data.media?.data==="string"&&/^data:(image\/(png|jpeg|webp|gif)|video\/(mp4|webm|quicktime));base64,/i.test(data.media.data); const isModData=typeof data.media?.data==="string"&&modExts.includes(mediaExt)&&/^data:(application\/octet-stream|application\/java-archive|application\/zip|application\/x-zip-compressed|application\/x-rar-compressed|application\/x-7z-compressed|application\/vnd\.[^;,]+|application\/x-[^;,]+);base64,/i.test(data.media.data); const media=data.media&&data.media.data.length<=12*1024*1024&&(isMediaData||isModData)?{type:isModData?"file":String(data.media.type||"image"),name:mediaName,data:data.media.data}:null;
     if ((!text && !media) || !areFriends(socket.user.id, to)) return;
     const message = { id: require("crypto").randomUUID(), from: socket.user.id, to, text, media, createdAt: Date.now() };
     db.messages.push(message); if (db.messages.length > 10000) db.messages = db.messages.slice(-10000);
