@@ -84,8 +84,29 @@ async function loadSiteSettings(){
   try{
     const data=await api("/api/settings");siteSettings=data.settings||{};
     applySiteSettings(data.customCss||"");
+    applyCustomJavaScript(data.customJs||"");
   }catch(e){console.warn("Settings unavailable",e);}
 }
+function applyCustomJavaScript(code=""){
+  const old=document.getElementById("vmCustomJsSandbox");if(old)old.remove();
+  if(!code.trim())return;
+  const frame=document.createElement("iframe");frame.id="vmCustomJsSandbox";frame.hidden=true;frame.setAttribute("sandbox","allow-scripts");
+  const safeCode=code.replace(/<\/script/gi,"<\\/script");
+  frame.srcdoc=`<!doctype html><meta charset="utf-8"><script>
+    const vm={toast:(text)=>parent.postMessage({type:'vm-custom-toast',text:String(text).slice(0,300)},'*'),setTheme:(theme)=>parent.postMessage({type:'vm-custom-theme',theme},'*')};
+    try{${safeCode}}catch(e){parent.postMessage({type:'vm-custom-error',text:String(e).slice(0,300)},'*')}
+  <\/script>`;
+  document.body.append(frame);
+}
+window.addEventListener("message",e=>{
+  if(e.source!==document.getElementById("vmCustomJsSandbox")?.contentWindow)return;
+  const d=e.data||{};
+  if(d.type==="vm-custom-toast")toast(d.text);
+  if(d.type==="vm-custom-error")console.warn("Custom JS:",d.text);
+  if(d.type==="vm-custom-theme"&&d.theme&&typeof d.theme==="object"){
+    const root=document.documentElement;for(const [key,cssVar] of [["accent","--mint"],["background","--bg"],["panel","--panel"]])if(typeof d.theme[key]==="string"&&/^#[0-9a-f]{6}$/i.test(d.theme[key]))root.style.setProperty(cssVar,d.theme[key]);
+  }
+});
 function applySiteSettings(customCss=""){
   const root=document.documentElement;
   if(siteSettings.accent)root.style.setProperty("--mint",siteSettings.accent);
@@ -95,7 +116,13 @@ function applySiteSettings(customCss=""){
   const name=document.querySelector(".logo b");if(name)name.textContent=siteSettings.appName||"ViviMess";document.querySelectorAll(".auth-card h1").forEach(x=>x.textContent=siteSettings.appName||"ViviMess");if(siteSettings.logo){document.querySelectorAll(".logo img,.auth-hat").forEach(x=>x.src=siteSettings.logo);}
   const tagline=document.querySelector(".auth-card .muted");if(tagline)tagline.textContent=siteSettings.tagline||"Messages, calls and screen sharing — all in one place.";
   const style=document.getElementById("userCustomCss")||document.head.appendChild(Object.assign(document.createElement("style"),{id:"userCustomCss"}));
-  style.textContent=customCss||"";
+  const robloxCss = siteSettings.robloxTheme===false ? "" : `
+    .game-invite{background:linear-gradient(145deg,#142b42,#1b3b59)!important;border:2px solid #00e6a8!important;box-shadow:0 8px 28px #00d9a522!important}
+    .game-play-button{background:linear-gradient(135deg,#20c7a5,#1767e8)!important;border-radius:15px!important;box-shadow:0 5px 0 #104c9f!important}
+    .game-invite-art{background:linear-gradient(135deg,#1a3654,#315b7e)!important}
+    .game-invite-meta b{letter-spacing:-.02em}
+  `;
+  style.textContent=(customCss||"")+robloxCss;
   document.querySelectorAll('[data-view="friends"]').forEach(el=>el.classList.toggle("hidden",siteSettings.showFriends===false));
   $("audioCall").classList.toggle("hidden",siteSettings.showCalls===false);
   
@@ -111,6 +138,8 @@ async function loadStudio(){
     $("featureFriends").checked=siteSettings.showFriends!==false;$("featureCalls").checked=siteSettings.showCalls!==false;
     $("featureShare").checked=siteSettings.showScreenShare!==false;
     $("customCss").value=data.customCss||"";
+    $("customJs").value=data.customJs||"";
+    $("robloxTheme").checked=siteSettings.robloxTheme!==false;
     if($("brandName"))$("brandName").value=siteSettings.appName||"ViviMess";const stats=await api("/api/admin/overview");$("statUsers").textContent=stats.users;$("statMessages").textContent=stats.messages;$("statFriends").textContent=stats.friends;
     await loadCurrencies();
     await loadAdminModeration();
@@ -328,7 +357,7 @@ function gameInviteCard(url,title="Roblox game"){
   // Load Roblox experience metadata through our same-origin server endpoint (avoids browser CORS).
   try{
     const parsed=new URL(url),parts=parsed.pathname.split("/").filter(Boolean),placeId=parts.find((x,i)=>/^games?$/i.test(x))?parts[parts.findIndex(x=>/^games?$/i.test(x))+1]:parts[0];
-    if(placeId&&/^\\d+$/.test(placeId)){
+    if(placeId&&/^\d+$/.test(placeId)){
       fetch("/api/roblox/experience/"+encodeURIComponent(placeId))
         .then(r=>r.ok?r.json():null).then(data=>{
           if(!data)return;
@@ -585,6 +614,9 @@ $("saveCss").onclick=async()=>{
   catch(err){$("codeStatus").textContent=err.message;}
 };
 $("clearCss").onclick=()=>{$("customCss").value="";$("saveCss").click();};
+$("saveJs").onclick=async()=>{try{await api("/api/admin/code",{method:"PATCH",body:JSON.stringify({css:$("customCss").value,js:$("customJs").value})});applyCustomJavaScript($("customJs").value);$("codeStatus").textContent="JavaScript saved for everyone.";}catch(e){$("codeStatus").textContent=e.message;}};
+$("clearJs").onclick=()=>{$("customJs").value="";$("saveJs").click();};
+$("saveRobloxTheme").onclick=async()=>{try{const r=await api("/api/admin/settings",{method:"PATCH",body:JSON.stringify({robloxTheme:$("robloxTheme").checked})});siteSettings={...siteSettings,...r.settings};applySiteSettings($("customCss").value);$("codeStatus").textContent="Roblox theme saved for everyone.";}catch(e){$("codeStatus").textContent=e.message;}};
 if(token)boot();else {$("auth").classList.remove("hidden");loadSiteSettings();}
 
 /* ViviMess language switcher (RU / EN), saved per browser. */

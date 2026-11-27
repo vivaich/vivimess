@@ -16,7 +16,7 @@ const DB_FILE = path.join(__dirname, "data.json");
 app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [], shopItems: [], quests: [], groups: [] };
+let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", customJs: "", currencies: [], customPages: [], gifLibrary: [], shopItems: [], quests: [], groups: [] };
 try { if (fs.existsSync(DB_FILE)) db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) }; } catch (e) {
   console.error("Could not read data.json. Starting with an empty database.", e.message);
 }
@@ -92,14 +92,14 @@ function requireModerator(req, res, next) {
   if (!user || !["admin", "moderator"].includes(user.role)) return res.status(403).json({ error: "Moderator access only." });
   req.staff = user; next();
 }
-app.get("/api/settings", (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "" }));
-app.get("/api/admin/settings", auth, requireAdmin, (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "" }));
+app.get("/api/settings", (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "", customJs: db.customJs || "" }));
+app.get("/api/admin/settings", auth, requireAdmin, (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "", customJs: db.customJs || "" }));
 app.patch("/api/admin/settings", auth, requireAdmin, (req, res) => {
-  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault"];
+  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault", "robloxTheme"];
   for (const key of allowed) {
     if (req.body[key] === undefined) continue;
     if (key === "logo") { const v=String(req.body[key]||""); if(v.length>8*1024*1024 || (v && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(v))) return res.status(400).json({error:"Logo must be PNG, JPG, WEBP or GIF up to 6 MB."}); db.settings.logo=v; continue; }
-    if (["showFriends", "showCalls", "showVideo", "showScreenShare"].includes(key)) db.settings[key] = !!req.body[key];
+    if (["showFriends", "showCalls", "showVideo", "showScreenShare", "robloxTheme"].includes(key)) db.settings[key] = !!req.body[key];
     else db.settings[key] = String(req.body[key]).slice(0, key === "tagline" ? 120 : 40);
   }
   save(); res.json({ settings: db.settings });
@@ -107,7 +107,9 @@ app.patch("/api/admin/settings", auth, requireAdmin, (req, res) => {
 app.patch("/api/admin/code", auth, requireAdmin, (req, res) => {
   const css = String(req.body.css || "");
   if (css.length > 30000) return res.status(400).json({ error: "Custom CSS limit is 30,000 characters." });
-  db.customCss = css; save(); res.json({ ok: true });
+  const js = String(req.body.js || "");
+  if (js.length > 12000) return res.status(400).json({ error: "Custom JavaScript limit is 12,000 characters." });
+  db.customCss = css; if (Object.prototype.hasOwnProperty.call(req.body, "js")) db.customJs = js; save(); res.json({ ok: true });
 });
 app.get("/api/admin/overview", auth, requireAdmin, (req, res) => {
   res.json({ users: db.users.length, messages: db.messages.length, friends: db.friendships.length });
