@@ -26,13 +26,14 @@
     <div id="currencyBalance" class="currency-balance">Loading balance…</div><div class="nav-label">WORKSPACE</div>
     <button class="nav active" data-view="chats">▣ <span>Messages</span></button>
     <button class="nav" data-view="friends">♧ <span>Friends</span></button>
+    <button class="nav" data-view="groups">▦ <span>Groups</span></button>
     <button class="nav" data-view="profile">◉ <span>My profile</span></button>
     <button class="nav" data-view="settings">⚙ <span>Settings</span></button>
     <button class="nav" data-view="shop">▣ <span>Shop</span></button>
     <button class="nav" data-view="quests">✦ <span>Quests</span></button>
     <button class="nav hidden" id="studioNav" data-view="studio">✦ <span>Creator Studio</span></button>
     <div id="customNav"></div>
-    <div class="side-bottom"><div class="mini-user" id="miniUser"></div><button id="logout" class="nav">↪ <span>Sign out</span></button></div>
+    <div class="side-bottom"><div class="mini-user" id="miniUser"></div><select id="presenceStatus" class="presence-select" aria-label="Online status"><option>Online</option><option>Idle</option><option>Do not disturb</option><option>Invisible</option></select><button id="logout" class="nav">↪ <span>Sign out</span></button></div>
   </aside>
   <main class="main">
     <header class="topbar"><div><span class="eyebrow">SUPERCELL CREATOR INSPIRED</span><h2 id="pageTitle">Messages</h2></div><div class="online-pill"><i></i> Connected</div></header>
@@ -44,7 +45,7 @@
           <div id="chatActive" class="hidden chat-active">
             <div class="conversation-head"><div id="chatPerson" class="person"></div><div class="call-actions"><button id="audioCall" class="soft">☎ Voice call</button></div></div>
             <div class="moderation-notice">Notice: conversations may be reviewed by administrators for moderation. Calls are not audio-recorded.</div><div class="message-tools"><input id="messageSearch" placeholder="Search messages…" aria-label="Search messages"><select id="messageFilter" aria-label="Filter messages"><option value="all">All messages</option><option value="image">Images</option><option value="video">Videos</option><option value="file">Files / mods</option></select><button id="clearMessageSearch" class="soft" type="button">Clear</button></div><div id="messages" class="messages"></div>
-            <form id="messageForm" class="composer"><input id="messageInput" placeholder="Write a message..." maxlength="2000" autocomplete="off"><input id="chatFile" type="file" accept="image/*,video/*,.jar,.zip,.mrpack,.rar,.7z,.schem,.schematic,.mcaddon,.mcpack" multiple hidden><button type="button" id="attachBtn" class="soft" title="Photo or video">＋</button><button type="button" id="gifBtn" class="soft">GIF</button><button class="primary" type="submit">Send ➤</button></form><div id="pendingFiles" class="pending-files hidden"></div><div id="gifPanel" class="gif-panel hidden"><div class="panel-head"><b>Your GIFs</b><label class="soft gif-upload">＋ Add GIF<input id="gifUpload" type="file" accept="image/gif" hidden></label><button id="closeGif" class="soft">Close</button></div><div id="gifGrid" class="gif-grid"></div></div>
+            <form id="messageForm" class="composer"><input id="messageInput" placeholder="Write a message..." maxlength="2000" autocomplete="off"><input id="chatFile" type="file" accept="image/*,video/*,.jar,.zip,.mrpack,.rar,.7z,.schem,.schematic,.mcaddon,.mcpack" multiple hidden><button type="button" id="paintOpen" class="soft" title="Draw">✎</button><button type="button" id="attachBtn" class="soft" title="Photo or video">＋</button><button type="button" id="gifBtn" class="soft">GIF</button><button class="primary" type="submit">Send ➤</button></form><div id="pendingFiles" class="pending-files hidden"></div><div id="gifPanel" class="gif-panel hidden"><div class="panel-head"><b>Your GIFs</b><label class="soft gif-upload">＋ Add GIF<input id="gifUpload" type="file" accept="image/gif" hidden></label><button id="closeGif" class="soft">Close</button></div><div id="gifGrid" class="gif-grid"></div></div>
           </div>
         </div>
       </div>
@@ -53,6 +54,7 @@
       <div class="panel section-panel"><div class="panel-head"><div><h3>Find your people</h3><p class="muted">Search by username or display name.</p></div></div><input id="userSearch" class="search" placeholder="Search creators..."><div id="searchResults" class="user-grid"></div></div>
       <div class="panel section-panel"><h3>Friend requests</h3><div id="friendRequests" class="user-grid"></div></div><div class="panel section-panel"><h3>Your friends</h3><div id="friendsGrid" class="user-grid"></div></div>
     </section>
+    <section id="view-groups" class="view hidden"><div class="panel section-panel"><div class="panel-head"><div><h3>Groups</h3><p class="muted">Create group chats with your friends.</p></div><button id="createGroup" class="primary">＋ New group</button></div><div id="groupList" class="user-grid"></div><div id="groupChat" class="group-chat hidden"><h3 id="groupTitle"></h3><div id="groupMessages" class="messages"></div><form id="groupMessageForm" class="composer"><input id="groupMessageInput" placeholder="Write to group…"><button class="primary">Send</button></form></div></div></section>
     <section id="view-shop" class="view hidden"><div class="panel section-panel"><div class="panel-head"><div><h3>ViviMess Shop</h3><p class="muted">Frames and animated profile banners</p></div></div><div id="shopItems" class="market-grid"></div></div></section>
     <section id="view-quests" class="view hidden"><div class="panel section-panel"><div class="panel-head"><div><h3>Quests</h3><p class="muted">Complete quests and earn currency</p></div></div><div id="questItems" class="quest-list"></div></div></section>
     <section id="view-profile" class="view hidden">
@@ -79,6 +81,9 @@
         <div class="device-actions"><button id="refreshDevices" class="soft" type="button">↻ Find devices</button><button id="testMic" class="primary" type="button">Test microphone</button><button id="testSpeaker" class="soft" type="button">Test headphones</button></div>
         <div class="mic-meter"><span id="micMeterFill"></span></div><p id="deviceStatus" class="success" aria-live="polite">Devices not checked yet.</p>
         <div class="settings-note"><b>Screen sharing</b><p>During a connected call, press Share screen and choose a screen or window in the browser dialog. The browser requires this action to be started by you.</p></div>
+      </div>
+      <div class="panel section-panel device-settings-panel">
+        <h3>Language / Язык</h3><label>Interface language<select id="settingsLanguage"><option value="ru">Русский</option><option value="en">English</option></select></label>
       </div>
       <div class="panel section-panel device-settings-panel">
         <h3>Notification sounds</h3>
@@ -154,7 +159,7 @@
           <div id="pageEditor" class="page-editor hidden"><div class="panel-head"><h4 id="editingPageTitle">Edit page</h4><button type="button" id="closePageEditor" class="soft">Close</button></div>
             <label>Page name<input id="editPageTitle" maxlength="32"></label>
             <div class="builder-tools"><button type="button" data-add-block="text" class="soft">＋ Text</button><button type="button" data-add-block="button" class="soft">＋ Button</button><button type="button" data-add-block="image" class="soft">＋ Image</button><button type="button" data-add-block="video" class="soft">＋ Video</button><button type="button" data-add-block="card" class="soft">＋ Card</button></div>
-            <div id="builderBlocks" class="builder-blocks"></div><div class="builder-actions"><button type="button" id="previewPage" class="soft">Preview tab</button><button type="button" id="savePage" class="primary">Save page</button></div><div id="pagePreview" class="page-preview hidden"><div class="panel-head"><b>Preview</b><button type="button" id="closePreview" class="soft">Close preview</button></div><div id="pagePreviewContent"></div></div><p id="pageStatus" class="success"></p>
+            <div class="gui-workspace"><div id="builderBlocks" class="builder-blocks"></div><aside class="gui-properties"><b>Properties</b><p class="muted">Select a block to edit its size, rotation, text and corners.</p><div id="guiPropertyPanel"></div></aside></div><div class="builder-actions"><button type="button" id="previewPage" class="soft">Preview tab</button><button type="button" id="savePage" class="primary">Save page</button></div><div id="pagePreview" class="page-preview hidden"><div class="panel-head"><b>Preview</b><button type="button" id="closePreview" class="soft">Close preview</button></div><div id="pagePreviewContent"></div></div><p id="pageStatus" class="success"></p>
           </div>
         </div>
         <div class="panel studio-panel">
@@ -190,6 +195,9 @@
           </div>
         </div>
         <div class="panel studio-panel">
+          <h3>Appearance & branding</h3><p class="muted">Change site identity without editing files in GitHub.</p><label>Site name<input id="brandName" maxlength="40"></label><label>Logo image / GIF<input id="brandLogo" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label><button id="saveBrand" class="primary" type="button">Save branding</button><p id="brandStatus" class="success"></p>
+        </div>
+        <div class="panel studio-panel">
           <h3>Site overview</h3><p class="muted">A quick look at your community.</p>
           <div class="stats-grid"><div><strong id="statUsers">—</strong><small>Accounts</small></div><div><strong id="statMessages">—</strong><small>Messages</small></div><div><strong id="statFriends">—</strong><small>Friend links</small></div></div>
           <p class="muted tiny">Admin account: <b>viva</b>. Keep its password private.</p>
@@ -216,6 +224,7 @@
     <button id="enableCallSound" class="primary hidden" type="button">Enable sound</button><div class="call-controls"><button id="muteBtn" class="soft">🎙 Mute</button><button id="shareBtn" class="soft">▧ Share screen</button><button id="hangupBtn" class="danger">End call</button></div>
   </div>
 </div>
+<div id="paintModal" class="paint-modal hidden"><div class="paint-window"><div class="panel-head"><h3>ViviMess Paint</h3><button id="paintClose" class="soft" type="button">Close</button></div><div class="paint-tools"><input id="paintColor" type="color" value="#28e0b2"><input id="paintSize" type="range" min="1" max="32" value="5"><button id="paintEraser" class="soft" type="button">Eraser</button><button id="paintClear" class="soft" type="button">Clear</button><button id="paintSend" class="primary" type="button">Send drawing</button></div><canvas id="paintCanvas" width="900" height="520"></canvas></div></div>
 <div id="toast" class="toast"></div>
 <script src="/socket.io/socket.io.js"></script><script src="/app.js"></script>
 </body></html>

@@ -16,7 +16,7 @@ const DB_FILE = path.join(__dirname, "data.json");
 app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [], shopItems: [], quests: [] };
+let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", currencies: [], customPages: [], gifLibrary: [], shopItems: [], quests: [], groups: [] };
 try { if (fs.existsSync(DB_FILE)) db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) }; } catch (e) {
   console.error("Could not read data.json. Starting with an empty database.", e.message);
 }
@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS = {
   showFriends: true,
   showCalls: true,
   showVideo: false,
-  showScreenShare: true
+  showScreenShare: true, logo: "", languageDefault: "ru"
 };
 db.settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
 if (!Array.isArray(db.users)) db.users = [];
@@ -42,6 +42,7 @@ if (!Array.isArray(db.gifLibrary)) db.gifLibrary = [];
 if (!Array.isArray(db.callLogs)) db.callLogs = [];
 if (!Array.isArray(db.shopItems)) db.shopItems = [];
 if (!Array.isArray(db.quests)) db.quests = [];
+if (!Array.isArray(db.groups)) db.groups = [];
 // Everyone starts with zero balance. The default currency is named Чекушня.
 if (!db.currencies.length) db.currencies.push({ id: "default", name: "Чекушня", logo: "", logoType: "image", createdAt: Date.now() });
 for (const user of db.users) {
@@ -94,9 +95,10 @@ function requireModerator(req, res, next) {
 app.get("/api/settings", (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "" }));
 app.get("/api/admin/settings", auth, requireAdmin, (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "" }));
 app.patch("/api/admin/settings", auth, requireAdmin, (req, res) => {
-  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare"];
+  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault"];
   for (const key of allowed) {
     if (req.body[key] === undefined) continue;
+    if (key === "logo") { const v=String(req.body[key]||""); if(v.length>8*1024*1024 || (v && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(v))) return res.status(400).json({error:"Logo must be PNG, JPG, WEBP or GIF up to 6 MB."}); db.settings.logo=v; continue; }
     if (["showFriends", "showCalls", "showVideo", "showScreenShare"].includes(key)) db.settings[key] = !!req.body[key];
     else db.settings[key] = String(req.body[key]).slice(0, key === "tagline" ? 120 : 40);
   }
@@ -123,7 +125,7 @@ app.put("/api/admin/pages/:id", auth, requireAdmin, (req,res) => {
   const page=db.customPages.find(p=>p.id===req.params.id); if(!page) return res.status(404).json({error:"Page not found."});
   if(req.body.title!==undefined) page.title=String(req.body.title).trim().slice(0,32)||page.title;
   if(req.body.published!==undefined) page.published=!!req.body.published;
-  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency","code","game-link"].includes(e.action)?e.action:"none",code:String(e.code||"").slice(0,12000),target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
+  if(req.body.elements!==undefined){ if(!Array.isArray(req.body.elements)||req.body.elements.length>100) return res.status(400).json({error:"A page can contain up to 100 elements."}); page.elements=req.body.elements.map(e=>({id:String(e.id||require("crypto").randomUUID()),type:["text","button","image","video","card"].includes(e.type)?e.type:"text",content:String(e.content||"").slice(0,10*1024*1024),label:String(e.label||"").slice(0,80),action:["none","open-page","award-currency","code","game-link"].includes(e.action)?e.action:"none",code:String(e.code||"").slice(0,12000),target:String(e.target||"").slice(0,100),width:Math.max(20,Math.min(100,Number(e.width)||100)),color:/^#[0-9a-f]{6}$/i.test(e.color||"")?e.color:"#ffffff",radius:Math.max(0,Math.min(32,Number(e.radius)||12)),rotation:Math.max(-180,Math.min(180,Number(e.rotation)||0)),height:Math.max(0,Math.min(2000,Number(e.height)||0)),fontSize:Math.max(8,Math.min(72,Number(e.fontSize)||16)),amount:Math.max(0,Math.min(100000,Number(e.amount)||0))})); }
   save(); res.json({page});
 });
 app.delete("/api/admin/pages/:id", auth, requireAdmin, (req,res)=>{db.customPages=db.customPages.filter(p=>p.id!==req.params.id);save();res.json({ok:true});});
@@ -139,7 +141,7 @@ app.get("/api/market", auth, (req,res)=>{
  res.json({items:db.shopItems.map(x=>({...x,owned:(user.ownedItems||[]).includes(x.id),equipped:user.equippedFrame===x.id||user.equippedBanner===x.id})),quests:db.quests.map(q=>({...q,submissionStatus:submissions[q.id]?.status||"",completed:!!submissions[q.id]?.claimed})),currencies:db.currencies.map(c=>({id:c.id,name:c.name,balance:Number(user.balances?.[c.id]||0)}))});
 });
 app.post("/api/quests/:id/submit", auth, (req,res)=>{
- const q=db.quests.find(x=>x.id===req.params.id);if(!q)return res.status(404).json({error:"Quest not found."});if(!q.link)return res.status(400).json({error:"This quest has no action link."});
+ const q=db.quests.find(x=>x.id===req.params.id);if(!q)return res.status(404).json({error:"Quest not found."});
  const user=db.users.find(u=>u.id===req.user.id);user.questSubmissions=user.questSubmissions||{};const old=user.questSubmissions[q.id];
  if(old?.status==="approved"||old?.status==="claimed")return res.status(409).json({error:"This quest is already approved."});
  user.questSubmissions[q.id]={status:"pending",submittedAt:Date.now()};save();res.json({ok:true,status:"pending"});
@@ -152,6 +154,16 @@ app.post("/api/admin/quests/:id/review/:userId", auth, requireAdmin, (req,res)=>
  u.questSubmissions=u.questSubmissions||{};const sub=u.questSubmissions[q.id];if(!sub||sub.status!=="pending")return res.status(409).json({error:"No pending submission for this quest."});
  sub.status="approved";sub.reviewedAt=Date.now();sub.reviewedBy=req.user.id;save();res.json({ok:true});
 });
+
+app.get("/api/admin/quest-candidates", auth, requireAdmin, (req,res)=>{
+ const rows=[]; for(const u of db.users){if(u.id===req.user.id)continue; for(const q of db.quests){const sub=u.questSubmissions?.[q.id]; rows.push({questId:q.id,userId:u.id,username:u.username,displayName:u.displayName,questTitle:q.title,submittedAt:sub?.submittedAt||0,status:sub?.status||"not-submitted",priority:sub?.status==="pending"?1:0});}}
+ rows.sort((a,b)=>b.priority-a.priority||(b.submittedAt||0)-(a.submittedAt||0));res.json({candidates:rows});
+});
+app.post("/api/admin/quests/:id/manual-review/:userId", auth, requireAdmin, (req,res)=>{
+ const q=db.quests.find(x=>x.id===req.params.id),u=db.users.find(x=>x.id===req.params.userId);if(!q||!u)return res.status(404).json({error:"Quest or user not found."});
+ u.questSubmissions=u.questSubmissions||{};const old=u.questSubmissions[q.id]||{};u.questSubmissions[q.id]={...old,status:"approved",reviewedAt:Date.now(),reviewedBy:req.user.id,manual:true};save();res.json({ok:true});
+});
+
 app.post("/api/shop/:id/buy", auth, (req,res)=>{
  const user=db.users.find(u=>u.id===req.user.id), item=db.shopItems.find(x=>x.id===req.params.id);
  if(!item)return res.status(404).json({error:"Item not found."});
@@ -325,6 +337,7 @@ app.patch("/api/profile", auth, (req, res) => {
     user.displayName = nextName;
   }
   if (req.body.bio !== undefined) user.bio = String(req.body.bio).trim().slice(0, 160);
+  if (req.body.status !== undefined) { const st=String(req.body.status); if(!["Online","Do not disturb","Invisible","Idle"].includes(st)) return res.status(400).json({error:"Invalid status."}); user.status=st; }
   if (req.body.equippedFrame !== undefined) { const id=String(req.body.equippedFrame||''); if(id && (!db.shopItems.some(x=>x.id===id&&x.type==='frame') || !(user.ownedItems||[]).includes(id))) return res.status(403).json({error:'You do not own this frame.'}); user.equippedFrame=id; }
   if (req.body.equippedBanner !== undefined) { const id=String(req.body.equippedBanner||''); if(id && (!db.shopItems.some(x=>x.id===id&&x.type==='banner') || !(user.ownedItems||[]).includes(id))) return res.status(403).json({error:'You do not own this banner.'}); user.equippedBanner=id; }
 
@@ -343,6 +356,7 @@ app.patch("/api/profile", auth, (req, res) => {
   if (req.body.bannerColor !== undefined && /^#[0-9a-fA-F]{6}$/.test(String(req.body.bannerColor))) user.bannerColor = String(req.body.bannerColor);
   save(); res.json({ user: safeUser(user) });
 });
+app.get("/api/presence", auth, (req,res)=>{const online=new Set([...io.sockets.sockets.values()].filter(x=>x.user).map(x=>x.user.id));res.json({users:db.users.map(u=>({id:u.id,status:u.status||"Online",online:online.has(u.id)}))});});
 app.get("/api/users", auth, (req, res) => {
   const q = String(req.query.q || "").toLowerCase().slice(0, 30);
   const users = db.users.filter(u => u.id !== req.user.id && (u.username.includes(q) || u.displayName.toLowerCase().includes(q))).slice(0, 30).map(u => ({ ...safeUser(u), isFriend: areFriends(req.user.id, u.id), requestSent: db.friendRequests.some(r=>r.from===req.user.id&&r.to===u.id), requestReceived: db.friendRequests.some(r=>r.from===u.id&&r.to===req.user.id) }));
@@ -363,6 +377,11 @@ app.delete("/api/friends/:id", auth, (req, res) => {
   db.friendships=db.friendships.filter(f=>!((f.from===req.user.id&&f.to===req.params.id)||(f.from===req.params.id&&f.to===req.user.id)));save();res.json({ok:true});
 });
 app.get("/api/friends", auth, (req,res)=>{const ids=new Set(db.friendships.filter(f=>f.from===req.user.id||f.to===req.user.id).map(f=>f.from===req.user.id?f.to:f.from));res.json({users:db.users.filter(u=>ids.has(u.id)).map(safeUser)});});
+
+app.get("/api/groups",auth,(req,res)=>res.json({groups:db.groups.filter(g=>g.members.includes(req.user.id)).map(g=>({...g,messages:g.messages.slice(-100)}))}));
+app.post("/api/groups",auth,(req,res)=>{const title=String(req.body.name||"").trim().slice(0,48);const ids=Array.isArray(req.body.members)?req.body.members.map(String):[];if(!title)return res.status(400).json({error:"Enter a group name."});const members=[...new Set([req.user.id,...ids])].filter(id=>db.users.some(u=>u.id===id));if(members.length<2||members.length>50)return res.status(400).json({error:"Choose at least one friend and no more than 49 others."});const g={id:require("crypto").randomUUID(),name:title,owner:req.user.id,members,messages:[],createdAt:Date.now()};db.groups.push(g);save();res.json({group:g});});
+app.post("/api/groups/:id/messages",auth,(req,res)=>{const g=db.groups.find(x=>x.id===req.params.id&&x.members.includes(req.user.id));if(!g)return res.status(404).json({error:"Group not found."});const text=String(req.body.text||"").trim().slice(0,2000);if(!text)return res.status(400).json({error:"Message is empty."});const m={id:require("crypto").randomUUID(),from:req.user.id,text,createdAt:Date.now()};g.messages.push(m);save();for(const uid of g.members)emitToUser(uid,"group:message",{groupId:g.id,message:m});res.json({message:m});});
+
 app.get("/api/messages/:id", auth, (req, res) => {
   if (!areFriends(req.user.id, req.params.id)) return res.status(403).json({ error: "Add this person as a friend to chat." });
   const messages = db.messages.filter(m => (m.from === req.user.id && m.to === req.params.id) || (m.from === req.params.id && m.to === req.user.id)).slice(-200);
@@ -374,6 +393,8 @@ io.use((socket, next) => {
   catch { next(new Error("Unauthorized")); }
 });
 io.on("connection", socket => {
+  socket.emit("presence:update", {id:socket.user.id,online:true});
+  socket.on("disconnect",()=>{socket.emit("presence:update",{id:socket.user.id,online:false});});
   socket.on("message:send", data => {
     const to = String(data.to || "");
     const text = String(data.text || "").trim().slice(0, 2000);
