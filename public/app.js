@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 let token = localStorage.getItem("vm_token") || "";
 if(token){$("bootSplash").classList.remove("hidden");$("auth").classList.add("hidden");}else{$("bootSplash").classList.add("hidden");$("auth").classList.remove("hidden");}
-let me = null, socket = null, activeFriend = null, friends = [], authMode = "login", siteSettings = {}, marketItems = [];
+let me = null, socket = null, activeFriend = null, friends = [], authMode = "login", siteSettings = {}, marketItems = [], activeCustomCss = "";
 let pc = null, localStream = null, currentCallPeer = null, incomingOffer = null, callMode = "audio", pendingIce = [], pendingIncomingCall = null;
 const CALL_PREFS_KEY="vm_call_preferences";
 let callPrefs=JSON.parse(localStorage.getItem(CALL_PREFS_KEY)||"{}");
@@ -78,7 +78,7 @@ async function boot() {
   $("miniUser").textContent=me.displayName+"  @"+me.username;
   $("profileHeading").textContent=me.displayName;
   $("profileUsername").value=me.username;$("profileName").value=me.displayName;$("profileBio").value=me.bio||"";$("profileAvatarFile").value="";$("profileBannerFile").value="";$("profileBannerColor").value=me.bannerColor||"#087c70";renderAvatar($("profileAvatar"),me);renderProfileBanner(me);
-  if($("presenceStatus"))$("presenceStatus").value=me.status||"Online";connectSocket(); await loadFriends(); await loadCustomNav(); showView("chats");
+  if($("presenceStatus"))$("presenceStatus").value=me.status||"Online";connectSocket(); await loadFriends(); await loadCustomNav(); applySiteSettings(); showView("chats");
 }
 async function loadSiteSettings(){
   try{
@@ -119,7 +119,8 @@ window.addEventListener("message",e=>{
     const root=document.documentElement;for(const [key,cssVar] of [["background","--roblox-bg"],["border","--roblox-border"],["button","--roblox-button"],["artwork","--roblox-art"]])if(typeof d.theme[key]==="string"&&/^#[0-9a-f]{6}$/i.test(d.theme[key]))root.style.setProperty(cssVar,d.theme[key]);
   }
 });
-function applySiteSettings(customCss=""){
+function applySiteSettings(customCss=null){
+  if(customCss!==null) activeCustomCss=String(customCss);
   const root=document.documentElement;
   if(siteSettings.accent)root.style.setProperty("--mint",siteSettings.accent);
   if(siteSettings.background)root.style.setProperty("--bg",siteSettings.background);
@@ -135,8 +136,15 @@ function applySiteSettings(customCss=""){
     .game-invite-art{background:linear-gradient(135deg,var(--roblox-art),color-mix(in srgb,var(--roblox-art),#315b7e 45%))!important}
     .game-invite-meta b{letter-spacing:-.02em}
   `;
-  style.textContent=(customCss||"")+robloxCss;
-  document.querySelectorAll('[data-view="friends"]').forEach(el=>el.classList.toggle("hidden",siteSettings.showFriends===false));
+  style.textContent=activeCustomCss+robloxCss;
+  const hiddenTabs = new Set(Array.isArray(siteSettings.hiddenNavItems) ? siteSettings.hiddenNavItems : []);
+  document.querySelectorAll(".sidebar .nav[data-view]").forEach(el=>{
+    const id=el.dataset.view;
+    const roleRestricted=id==="studio" && !["admin","moderator"].includes(me?.role);
+    const featureRestricted=id==="friends" && siteSettings.showFriends===false;
+    el.classList.toggle("hidden", hiddenTabs.has(id) || roleRestricted || featureRestricted);
+  });
+  document.querySelectorAll("#customNav .nav[data-page]").forEach(el=>el.classList.toggle("hidden", hiddenTabs.has("page:" + el.dataset.page)));
   $("audioCall").classList.toggle("hidden",siteSettings.showCalls===false);
   
   $("shareBtn").classList.toggle("hidden",siteSettings.showScreenShare===false);
@@ -154,7 +162,8 @@ async function loadStudio(){
     $("customJs").value=data.customJs||"";
     $("robloxTheme").checked=siteSettings.robloxTheme!==false;
     $("robloxBg").value=siteSettings.robloxBg||"#142b42";$("robloxBorder").value=siteSettings.robloxBorder||"#00e6a8";$("robloxButton").value=siteSettings.robloxButton||"#20c7a5";$("robloxArt").value=siteSettings.robloxArt||"#1a3654";
-    if($("brandName"))$("brandName").value=siteSettings.appName||"ViviMess";const stats=await api("/api/admin/overview");$("statUsers").textContent=stats.users;$("statMessages").textContent=stats.messages;$("statFriends").textContent=stats.friends;
+    if($("brandName"))$("brandName").value=siteSettings.appName||"ViviMess";
+    renderNavVisibilitySettings();const stats=await api("/api/admin/overview");$("statUsers").textContent=stats.users;$("statMessages").textContent=stats.messages;$("statFriends").textContent=stats.friends;
     await loadCurrencies();
     await loadAdminModeration();
   }catch(e){toast(e.message);}
@@ -306,6 +315,8 @@ function showView(name){
   if(name==="shop"||name==="quests")loadMarket();
 }
 document.querySelectorAll(".nav[data-view]").forEach(b=>b.onclick=()=>showView(b.dataset.view));
+// Emergency access to Creator Studio if the owner hides its sidebar shortcut.
+document.addEventListener("keydown",e=>{if(e.altKey&&e.shiftKey&&e.code==="KeyV"&&me?.role==="admin"){e.preventDefault();showView("studio");toast("Creator Studio opened (Alt+Shift+V).");}});
 document.querySelectorAll("[data-goto]").forEach(b=>b.onclick=()=>showView(b.dataset.goto));
 $("logout").onclick=()=>{if(socket)socket.disconnect();localStorage.removeItem("vm_token");location.reload();};
 
@@ -410,8 +421,18 @@ $("loadModerationChat").onclick=async()=>{try{const a=$("moderationUserA").value
 $("lookupModerationUser").onclick=async()=>{try{const name=$("moderationLookup").value.trim();if(!name)throw new Error("Enter a username.");const d=await api("/api/moderation/user/"+encodeURIComponent(name));const host=$("moderationUserResult");host.innerHTML="";const head=document.createElement("p");head.textContent=d.user.displayName+" @"+d.user.username+" · "+d.user.role;host.append(head);const f=document.createElement("p");f.textContent="Friends ("+d.friends.length+"): "+(d.friends.map(x=>"@"+x.username).join(", ")||"none");host.append(f);const title=document.createElement("h5");title.textContent="Recent messages involving this user";host.append(title);d.recentMessages.forEach(m=>{const row=document.createElement("p");row.className="moderation-message";row.textContent="@"+m.fromUsername+" → @"+m.toUsername+": "+(m.text||"["+(m.media?.type||"media")+"]");host.append(row);});}catch(e){toast(e.message);}};
 $("resetCommunity").onclick=async()=>{if(!confirm("This will delete all accounts except viva, all old messages, friends, call logs, GIFs and custom pages. A backup is created first. Continue?"))return;if(!confirm("Final confirmation: permanently reset the ViviMess community?"))return;try{const d=await api("/api/admin/reset-community",{method:"POST",body:"{}"});toast("Reset complete. Backup: "+d.backup);setTimeout(()=>location.reload(),1200);}catch(e){toast(e.message);}};
 
-async function loadAdminPages(){try{const d=await api("/api/admin/pages");customPages=d.pages||[];renderAdminPages();}catch(e){}}
-async function loadCustomNav(){try{const d=await api("/api/pages");customPages=d.pages||[];const nav=$("customNav");nav.innerHTML="";customPages.forEach(p=>{const b=document.createElement("button");b.className="nav";b.dataset.page=p.slug;b.innerHTML="✧ <span></span>";b.querySelector("span").textContent=p.title;b.onclick=()=>showView(p.slug);nav.append(b);});}catch(e){}}
+async function loadAdminPages(){try{const d=await api("/api/admin/pages");customPages=d.pages||[];renderAdminPages();renderNavVisibilitySettings();}catch(e){}}
+const BUILTIN_NAV_TABS=[
+  ["chats","Сообщения"],["friends","Друзья"],["groups","Группы"],["profile","Профиль"],["settings","Настройки"],["shop","Магазин"],["quests","Квесты"],["studio","Creator Studio"]
+];
+function renderNavVisibilitySettings(){
+  const host=$("navVisibilityList");if(!host)return;host.innerHTML="";
+  const hidden=new Set(Array.isArray(siteSettings.hiddenNavItems)?siteSettings.hiddenNavItems:[]);
+  const rows=[...BUILTIN_NAV_TABS,...(customPages||[]).map(p=>["page:"+p.slug,p.title])];
+  rows.forEach(([id,label])=>{const row=document.createElement("label");row.className="toggle-row nav-visibility-row";const text=document.createElement("span");text.textContent=label;const input=document.createElement("input");input.type="checkbox";input.checked=!hidden.has(id);input.dataset.navId=id;input.setAttribute("aria-label","Показывать: "+label);row.append(text,input);host.append(row);});
+}
+$("saveNavVisibility")?.addEventListener("click",async()=>{try{const hidden=[...document.querySelectorAll("#navVisibilityList input[data-nav-id]")].filter(x=>!x.checked).map(x=>x.dataset.navId);const r=await api("/api/admin/settings",{method:"PATCH",body:JSON.stringify({hiddenNavItems:hidden})});siteSettings={...siteSettings,...r.settings};applySiteSettings($("customCss")?.value||"");$("navVisibilityStatus").textContent="Видимость вкладок сохранена.";}catch(e){$("navVisibilityStatus").textContent=e.message;}});
+async function loadCustomNav(){try{const d=await api("/api/pages");customPages=d.pages||[];const nav=$("customNav");nav.innerHTML="";const hidden=new Set(Array.isArray(siteSettings.hiddenNavItems)?siteSettings.hiddenNavItems:[]);customPages.forEach(p=>{const b=document.createElement("button");b.className="nav"+(hidden.has("page:"+p.slug)?" hidden":"");b.dataset.page=p.slug;b.innerHTML="✧ <span></span>";b.querySelector("span").textContent=p.title;b.onclick=()=>showView(p.slug);nav.append(b);});}catch(e){}}
 function renderAdminPages(){const host=$("adminPagesList");if(!host)return;host.innerHTML="";customPages.forEach(p=>{const row=document.createElement("div");row.className="admin-page-row";const label=document.createElement("b");label.textContent=p.title;const edit=document.createElement("button");edit.className="soft";edit.textContent="Edit";edit.onclick=()=>openPageEditor(p);const del=document.createElement("button");del.className="danger";del.textContent="Delete";del.onclick=async()=>{if(confirm("Delete this tab?")){await api("/api/admin/pages/"+p.id,{method:"DELETE"});await loadAdminPages();await loadCustomNav();}};row.append(label,edit,del);host.append(row);});}
 $("newPageForm").onsubmit=async e=>{e.preventDefault();try{const title=$("newPageTitle").value.trim();const d=await api("/api/admin/pages",{method:"POST",body:JSON.stringify({title})});$("newPageTitle").value="";await loadAdminPages();await loadCustomNav();openPageEditor(d.page);toast("New sidebar tab created.");}catch(err){toast(err.message);}};
 function openPageEditor(page){editingPage=JSON.parse(JSON.stringify(page));$("pageEditor").classList.remove("hidden");$("editingPageTitle").textContent="Editing: "+page.title;$("editPageTitle").value=page.title;renderBuilderBlocks();}

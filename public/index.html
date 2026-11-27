@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ViviMess — Creator Community</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/custom.css">
 </head>
 <body>
 <div id="bootSplash" class="boot-splash">Loading ViviMess…</div>
@@ -119,6 +120,12 @@
           <div class="toggle-row"><div><b>Calls</b><small>Voice calling</small></div><input id="featureCalls" type="checkbox"></div>
           <div class="toggle-row"><div><b>Screen sharing</b><small>Share your screen in a call</small></div><input id="featureShare" type="checkbox"></div>
           <button id="saveFeatures" class="primary">Save features</button><p id="featureStatus" class="success"></p>
+        </div>
+        <div class="panel studio-panel">
+          <h3>Видимость вкладок</h3><p class="muted">Выбирай, какие разделы показывать в левом меню. Изменения применяются всем пользователям.</p>
+          <div id="navVisibilityList" class="nav-visibility-list"></div>
+          <button id="saveNavVisibility" class="primary" type="button">Сохранить видимость</button>
+          <p id="navVisibilityStatus" class="success"></p>
         </div>
         <div class="panel studio-panel code-panel">
           <h3>Advanced: custom CSS</h3><p class="muted">Optional code area. Ask ChatGPT for CSS changes and paste them here.</p>

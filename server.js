@@ -11,14 +11,25 @@ const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 14 * 1024 * 1024 });
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "CHANGE_THIS_SECRET_BEFORE_PUBLIC_DEPLOYMENT";
-const DB_FILE = path.join(__dirname, "data.json");
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const DB_FILE = path.join(DATA_DIR, "data.json");
 
 app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 let db = { users: [], friendships: [], friendRequests: [], messages: [], callLogs: [], settings: null, customCss: "", customJs: "", currencies: [], customPages: [], gifLibrary: [], shopItems: [], quests: [], groups: [] };
-try { if (fs.existsSync(DB_FILE)) db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) }; } catch (e) {
-  console.error("Could not read data.json. Starting with an empty database.", e.message);
+// Never silently replace a damaged database with an empty one: that would make
+// existing accounts and conversations appear deleted after a restart.
+if (fs.existsSync(DB_FILE)) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("data.json must contain a JSON object");
+    db = { ...db, ...parsed };
+  } catch (e) {
+    console.error("FATAL: data.json could not be read. Refusing to start to protect existing accounts and messages.", e.message);
+    process.exit(1);
+  }
 }
 const DEFAULT_SETTINGS = {
   appName: "ViviMess",
@@ -30,20 +41,20 @@ const DEFAULT_SETTINGS = {
   showCalls: true,
   showVideo: false,
   showScreenShare: true, logo: "", languageDefault: "ru", robloxTheme: true,
-  robloxBg: "#142b42", robloxBorder: "#00e6a8", robloxButton: "#20c7a5", robloxArt: "#1a3654"
+  robloxBg: "#142b42", robloxBorder: "#00e6a8", robloxButton: "#20c7a5", robloxArt: "#1a3654", hiddenNavItems: []
 };
 db.settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
-if (!Array.isArray(db.users)) db.users = [];
-if (!Array.isArray(db.friendships)) db.friendships = [];
-if (!Array.isArray(db.messages)) db.messages = [];
-if (!Array.isArray(db.currencies)) db.currencies = [];
-if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
-if (!Array.isArray(db.customPages)) db.customPages = [];
-if (!Array.isArray(db.gifLibrary)) db.gifLibrary = [];
-if (!Array.isArray(db.callLogs)) db.callLogs = [];
-if (!Array.isArray(db.shopItems)) db.shopItems = [];
-if (!Array.isArray(db.quests)) db.quests = [];
-if (!Array.isArray(db.groups)) db.groups = [];
+if (!Array.isArray(db.users)) throw new Error("Database field users is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.friendships)) throw new Error("Database field friendships is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.messages)) throw new Error("Database field messages is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.currencies)) throw new Error("Database field currencies is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.friendRequests)) throw new Error("Database field friendRequests is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.customPages)) throw new Error("Database field customPages is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.gifLibrary)) throw new Error("Database field gifLibrary is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.callLogs)) throw new Error("Database field callLogs is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.shopItems)) throw new Error("Database field shopItems is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.quests)) throw new Error("Database field quests is not an array; refusing to overwrite existing data.");
+if (!Array.isArray(db.groups)) throw new Error("Database field groups is not an array; refusing to overwrite existing data.");
 // Everyone starts with zero balance. The default currency is named Чекушня.
 if (!db.currencies.length) db.currencies.push({ id: "default", name: "Чекушня", logo: "", logoType: "image", createdAt: Date.now() });
 for (const user of db.users) {
@@ -70,7 +81,14 @@ async function seedAdmin() {
   save();
 }
 function save() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  const temp = DB_FILE + ".tmp";
+  const backup = DB_FILE + ".bak";
+  const serialized = JSON.stringify(db, null, 2);
+  // Keep a last-known-good copy and use atomic rename so a restart cannot
+  // leave a half-written database if the process stops during a save.
+  if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, backup);
+  fs.writeFileSync(temp, serialized, { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(temp, DB_FILE);
 }
 function tokenFor(user) {
   return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: "7d" });
@@ -96,11 +114,15 @@ function requireModerator(req, res, next) {
 app.get("/api/settings", (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "", customJs: db.customJs || "" }));
 app.get("/api/admin/settings", auth, requireAdmin, (req, res) => res.json({ settings: db.settings, customCss: db.customCss || "", customJs: db.customJs || "" }));
 app.patch("/api/admin/settings", auth, requireAdmin, (req, res) => {
-  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault", "robloxTheme", "robloxBg", "robloxBorder", "robloxButton", "robloxArt"];
+  const allowed = ["appName", "tagline", "accent", "background", "panel", "showFriends", "showCalls", "showVideo", "showScreenShare", "logo", "languageDefault", "robloxTheme", "robloxBg", "robloxBorder", "robloxButton", "robloxArt", "hiddenNavItems"];
   for (const key of allowed) {
     if (req.body[key] === undefined) continue;
     if (key === "logo") { const v=String(req.body[key]||""); if(v.length>8*1024*1024 || (v && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(v))) return res.status(400).json({error:"Logo must be PNG, JPG, WEBP or GIF up to 6 MB."}); db.settings.logo=v; continue; }
-    if (["showFriends", "showCalls", "showVideo", "showScreenShare", "robloxTheme"].includes(key)) db.settings[key] = !!req.body[key];
+    if (key === "hiddenNavItems") {
+      if (!Array.isArray(req.body[key]) || req.body[key].length > 80) return res.status(400).json({ error: "Invalid hidden tabs list." });
+      db.settings.hiddenNavItems = [...new Set(req.body[key].map(x => String(x).slice(0, 48)).filter(Boolean))];
+    }
+    else if (["showFriends", "showCalls", "showVideo", "showScreenShare", "robloxTheme"].includes(key)) db.settings[key] = !!req.body[key];
     else if (["robloxBg", "robloxBorder", "robloxButton", "robloxArt", "accent", "background", "panel"].includes(key)) { const v=String(req.body[key]||""); if(!/^#[0-9a-f]{6}$/i.test(v)) return res.status(400).json({error:"Colors must use a six-digit HEX value."}); db.settings[key]=v; }
     else db.settings[key] = String(req.body[key]).slice(0, key === "tagline" ? 120 : 40);
   }

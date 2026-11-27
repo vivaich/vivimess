@@ -1,8 +1,8 @@
 {
   "name": "vivimess",
-  "version": "5.4.0",
+  "version": "5.6.0",
   "private": true,
-  "description": "ViviMess 5.4 with Creator Studio and public Roblox game metadata",
+  "description": "ViviMess 5.6 with persistent Creator Studio settings and configurable sidebar visibility",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
