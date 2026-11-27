@@ -180,10 +180,16 @@ if(balanceForm)balanceForm.onsubmit=async e=>{e.preventDefault();try{await api("
 
 // Presence status and group chat tools
 if($("presenceStatus")){ $("presenceStatus").onchange=async()=>{try{const r=await api("/api/profile",{method:"PATCH",body:JSON.stringify({status:$("presenceStatus").value})});me=r.user;toast("Status updated");}catch(e){toast(e.message);}}; }
-async function loadGroups(){try{const d=await api("/api/groups"),host=$("groupList");host.innerHTML="";if(!d.groups.length)host.innerHTML='<p class="muted">No groups yet. Create one to start chatting.</p>';d.groups.forEach(g=>{const b=document.createElement("button");b.className="user-card";b.textContent=g.name+" · "+g.members.length+" members";b.onclick=()=>openGroup(g);host.append(b);});}catch(e){toast(e.message);}}
-let activeGroup=null;function openGroup(g){activeGroup=g;$("groupChat").classList.remove("hidden");$("groupTitle").textContent=g.name;renderGroupMessages(g.messages||[]);}
-function renderGroupMessages(ms){const h=$("groupMessages");h.innerHTML="";(ms||[]).forEach(m=>{const d=document.createElement("div");d.className="message-bubble";d.textContent=(m.from===me.id?"You":m.from)+": "+m.text;h.append(d);});h.scrollTop=h.scrollHeight;}
-if($("createGroup"))$("createGroup").onclick=async()=>{const name=prompt("Group name?");if(!name)return;const options=friends.map((u,i)=>`${i+1}. ${u.displayName} (@${u.username})`).join("\n");const chosen=prompt("Enter friend numbers separated by commas:\n"+options);if(!chosen)return;const ids=chosen.split(",").map(x=>friends[Number(x.trim())-1]?.id).filter(Boolean);try{await api("/api/groups",{method:"POST",body:JSON.stringify({name,members:ids})});await loadGroups();toast("Group created");}catch(e){toast(e.message);}};
+let activeGroup=null;
+async function loadGroups(){try{const d=await api("/api/groups"),host=$("groupList");host.innerHTML="";if(!d.groups.length){host.innerHTML='<div class="groups-empty"><b>У тебя пока нет групп</b><p>Создай группу и пригласи друзей в общий чат.</p></div>';return;}d.groups.forEach(g=>{const b=document.createElement("button");b.type="button";b.className="group-list-card";const avatar=document.createElement("span");avatar.className="group-list-avatar";avatar.textContent=(g.name||"G").trim().slice(0,1).toUpperCase();const info=document.createElement("span");info.className="group-list-info";const title=document.createElement("b");title.textContent=g.name;const sub=document.createElement("small");sub.textContent=`${g.members.length} участников · ${(g.messages||[]).length} сообщений`;info.append(title,sub);const arrow=document.createElement("span");arrow.textContent="›";arrow.className="group-list-arrow";b.append(avatar,info,arrow);b.onclick=()=>openGroup(g);host.append(b);});}catch(e){toast(e.message);}}
+function showGroupCreate(show){$("groupCreatePanel").classList.toggle("hidden",!show);$("groupList").classList.toggle("hidden",show);if(show){$("groupNameInput").value="";$("groupCreateStatus").textContent="";const host=$("groupMemberChoices");host.innerHTML="";if(!friends.length){host.innerHTML='<p class="muted">Сначала добавь друзей.</p>';return;}friends.forEach(u=>{const label=document.createElement("label");label.className="group-member-choice";const cb=document.createElement("input");cb.type="checkbox";cb.value=u.id;const avatar=document.createElement("span");avatar.className="group-member-avatar";avatar.textContent=(u.displayName||u.username||"?").slice(0,1).toUpperCase();const name=document.createElement("span");name.textContent=`${u.displayName||u.username} (@${u.username})`;label.append(cb,avatar,name);host.append(label);});$("groupNameInput").focus();}}
+function openGroup(g){activeGroup=g;$("groupCreatePanel").classList.add("hidden");$("groupList").classList.add("hidden");$("groupChat").classList.remove("hidden");$("groupTitle").textContent=g.name;$("groupSubtitle").textContent=`${g.members.length} участников`;renderGroupMessages(g.messages||[]);}
+function renderGroupMessages(ms){const h=$("groupMessages");h.innerHTML="";(ms||[]).forEach(m=>{const d=document.createElement("div");d.className="message-bubble";const sender=m.from===me.id?"Вы":(friends.find(u=>u.id===m.from)?.displayName||friends.find(u=>u.id===m.from)?.username||"Участник");d.textContent=sender+": "+m.text;h.append(d);});h.scrollTop=h.scrollHeight;}
+if($("createGroup"))$("createGroup").onclick=()=>showGroupCreate(true);
+if($("cancelGroupCreate"))$("cancelGroupCreate").onclick=()=>showGroupCreate(false);
+if($("backToGroups"))$("backToGroups").onclick=()=>{$("groupChat").classList.add("hidden");$("groupList").classList.remove("hidden");activeGroup=null;};
+if($("confirmCreateGroup"))$("confirmCreateGroup").onclick=async()=>{const name=$("groupNameInput").value.trim(),ids=[...$("groupMemberChoices").querySelectorAll('input[type="checkbox"]:checked')].map(x=>x.value);if(!name){$("groupCreateStatus").textContent="Введи название группы.";return;}if(!ids.length){$("groupCreateStatus").textContent="Выбери хотя бы одного участника.";return;}try{const r=await api("/api/groups",{method:"POST",body:JSON.stringify({name,members:ids})});await loadGroups();openGroup(r.group);toast("Группа создана!");}catch(e){$("groupCreateStatus").textContent=e.message;}};
+
 if($("groupMessageForm"))$("groupMessageForm").onsubmit=async e=>{e.preventDefault();if(!activeGroup)return;try{const text=$("groupMessageInput").value.trim();if(!text)return;await api("/api/groups/"+activeGroup.id+"/messages",{method:"POST",body:JSON.stringify({text})});const d=await api("/api/groups");activeGroup=d.groups.find(x=>x.id===activeGroup.id)||activeGroup;renderGroupMessages(activeGroup.messages);$("groupMessageInput").value="";}catch(e){toast(e.message);}};
 // Simple Paint: mouse/touch drawing, brush, background, eraser, undo and send.
 (function(){
@@ -204,7 +210,7 @@ if($("groupMessageForm"))$("groupMessageForm").onsubmit=async e=>{e.preventDefau
  }
  fill();
  function save(){try{undoStack.push(ctx.getImageData(0,0,canvas.width,canvas.height));if(undoStack.length>20)undoStack.shift();}catch(e){}}
- function pt(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height};}
+ function pt(e){const r=canvas.getBoundingClientRect();const sx=canvas.width/Math.max(1,r.width),sy=canvas.height/Math.max(1,r.height);return{x:Math.max(0,Math.min(canvas.width,(e.clientX-r.left)*sx)),y:Math.max(0,Math.min(canvas.height,(e.clientY-r.top)*sy))};}
  canvas.addEventListener("pointerdown",e=>{e.preventDefault();drawing=true;save();canvas.setPointerCapture(e.pointerId);const p=pt(e);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.1,p.y+.1);ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=Number($("paintSize").value)||5;ctx.strokeStyle=erase?bg():$("paintColor").value;ctx.stroke();});
  canvas.addEventListener("pointermove",e=>{if(!drawing)return;e.preventDefault();const p=pt(e);ctx.lineWidth=Number($("paintSize").value)||5;ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle=erase?bg():$("paintColor").value;ctx.lineTo(p.x,p.y);ctx.stroke();});
  const stop=()=>{drawing=false;ctx.closePath();};["pointerup","pointercancel","lostpointercapture"].forEach(n=>canvas.addEventListener(n,stop));
@@ -230,6 +236,7 @@ function connectSocket(){
   socket.on("connect_error",()=>toast("Live connection unavailable. Refresh the page."));
   socket.on("message:new",m=>{if(m.from!==me?.id)playUiTone("message");if(activeFriend&&(m.from===activeFriend.id||m.to===activeFriend.id))loadMessages(activeFriend.id);});
   socket.on("friends:changed",()=>{loadFriends();loadPeople($("userSearch").value);});
+  socket.on("group:message",data=>{if(activeGroup&&activeGroup.id===data.groupId){activeGroup.messages=activeGroup.messages||[];activeGroup.messages.push(data.message);renderGroupMessages(activeGroup.messages);}loadGroups();});
   socket.on("friend-request:new",data=>{toast("Friend request from @"+data.from.username);loadFriendRequests();});
   socket.on("friend-request:changed",loadFriendRequests);
   socket.on("call:incoming",data=>{
@@ -464,7 +471,7 @@ async function startCall(peer,mode,isAnswer){
     screenSender=screenTransceiver.sender;
     localStream.getAudioTracks().forEach(track=>{
       const sender=pc.addTrack(track,localStream);
-      try{const params=sender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];params.encodings[0].maxBitrate=96000;sender.setParameters(params).catch(()=>{});}catch{}
+      try{const params=sender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];params.encodings[0].maxBitrate=128000;sender.setParameters(params).catch(()=>{});}catch{}
     });
     pc.ontrack=async e=>{
       if(e.track.kind==="audio"){
@@ -476,8 +483,8 @@ async function startCall(peer,mode,isAnswer){
       if(e.track.kind==="video"){
         const video=$("remoteVideo");video.autoplay=true;video.playsInline=true;video.muted=true;
         video.srcObject=new MediaStream([e.track]);
-        const show=()=>{video.classList.add("screen-live");video.play().catch(err=>{console.warn("Remote screen playback failed",err);$("callHint").textContent="Screen received, but playback failed.";});};
-        e.track.onunmute=show;e.track.onmute=()=>video.classList.remove("screen-live");
+        const show=()=>{video.classList.add("screen-live");$("fullscreenShareBtn")?.classList.remove("hidden");video.play().catch(err=>{console.warn("Remote screen playback failed",err);$("callHint").textContent="Screen received, but playback failed.";});};
+        e.track.onunmute=show;e.track.onmute=()=>{video.classList.remove("screen-live");$("fullscreenShareBtn")?.classList.add("hidden");};
         if(e.track.readyState==="live"&&!e.track.muted)show();
       }
     };
@@ -516,13 +523,14 @@ $("shareBtn").onclick=async()=>{
       if(screenSender)await screenSender.replaceTrack(null);
       old.getTracks().forEach(t=>t.stop());
       $("shareBtn").textContent="▧ Share screen";
+      $("fullscreenShareBtn")?.classList.add("hidden");
       $("callHint").textContent="Screen sharing stopped";
       return;
     }
     if(!window.isSecureContext)throw new Error("Демонстрация экрана доступна только на HTTPS-сайте.");
     if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)throw new Error("Браузер не поддерживает демонстрацию. Открой сайт в актуальном Chrome или Edge.");
     // getDisplayMedia must be called directly from this click handler.
-    const captured=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15,max:30},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    const captured=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:30},width:{ideal:1920},height:{ideal:1080}},audio:false});
     const track=captured.getVideoTracks()[0];
     if(!track)throw new Error("Браузер не вернул видеопоток экрана.");
     const videoTransceiver=pc.getTransceivers().find(t=>t.sender===screenSender)||pc.getTransceivers().find(t=>t.receiver?.track?.kind==="video");
@@ -530,26 +538,32 @@ $("shareBtn").onclick=async()=>{
     screenSender=videoTransceiver.sender;
     if(videoTransceiver.direction!=="sendrecv")videoTransceiver.direction="sendrecv";
     await screenSender.replaceTrack(track);
+    try{const params=screenSender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];params.encodings[0].maxBitrate=4000000;params.encodings[0].maxFramerate=30;params.degradationPreference="maintain-resolution";await screenSender.setParameters(params);}catch(err){console.warn("Could not tune screen quality",err);}
     screenStream=captured;
     $("shareBtn").textContent="▧ Stop sharing";
+    $("fullscreenShareBtn")?.classList.remove("hidden");
     $("callHint").textContent="You are sharing your screen";
     track.addEventListener("ended",async()=>{
       try{await screenSender?.replaceTrack(null);}catch(err){console.warn("Could not stop screen sender",err);}
       if(screenStream===captured)screenStream=null;
       $("shareBtn").textContent="▧ Share screen";
+      $("fullscreenShareBtn")?.classList.add("hidden");
       $("callHint").textContent="Screen sharing stopped";
     },{once:true});
   }catch(e){
     if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
     $("shareBtn").textContent="▧ Share screen";
+    $("fullscreenShareBtn")?.classList.add("hidden");
     toast("Демонстрация экрана: "+(e.name==="NotAllowedError"?"доступ отменён или запрещён браузером":e.message));
   }
 };
+$("fullscreenShareBtn").onclick=async()=>{const stage=$("remoteVideo").closest(".video-stage");if(!stage)return;try{if(!document.fullscreenElement){await stage.requestFullscreen();$("fullscreenShareBtn").textContent="⛶ Выйти из полного экрана";}else{await document.exitFullscreen();$("fullscreenShareBtn").textContent="⛶ На весь экран";}}catch(e){toast("Полный экран недоступен: "+e.message);}};
+document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&$("fullscreenShareBtn"))$("fullscreenShareBtn").textContent="⛶ На весь экран";});
 $("hangupBtn").onclick=()=>endCall(true);
 function endCall(notify){
   if(notify&&currentCallPeer&&socket)socket.emit("call:end",{to:currentCallPeer});
   stopRingtone();if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}screenSender=null;if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
-  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("remoteAudio").srcObject=null;$("shareBtn").textContent="▧ Share screen";$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
+  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("remoteAudio").srcObject=null;$("shareBtn").textContent="▧ Share screen";$("fullscreenShareBtn")?.classList.add("hidden");if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
 }
 $("designForm").onsubmit=async e=>{
   e.preventDefault();try{
