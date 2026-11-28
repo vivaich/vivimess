@@ -1,8 +1,8 @@
 {
   "name": "vivimess",
-  "version": "5.6.0",
+  "version": "5.7.0",
   "private": true,
-  "description": "ViviMess 5.6 with persistent Creator Studio settings and configurable sidebar visibility",
+  "description": "ViviMess 5.7 redesigned voice and screen-sharing call interface",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

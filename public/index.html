@@ -239,12 +239,33 @@ vm.setTheme({accent:"#28e0b2"});'></textarea>
     </div>
   </div>
 </div>
-<div id="callModal" class="call-modal hidden">
-  <div class="call-window">
-    <div class="call-top"><div><span class="eyebrow">VIVIMESS LIVE</span><h3 id="callTitle">Call</h3></div><span class="live-tag"><i></i> LIVE</span></div>
-    <div class="call-participant"><div class="call-avatar-large">☎</div><div><b id="callPeerName">Voice call</b><small id="callPeerStatus">Connecting securely…</small></div></div><div class="video-stage audio-stage"><video id="remoteVideo" autoplay playsinline></video><audio id="remoteAudio" autoplay playsinline></audio><div id="callHint" class="call-hint">Waiting for the other person…</div><div class="audio-call-avatar">☎</div></div><div class="call-volume"><label for="peerVolume">Other person volume</label><input id="peerVolume" type="range" min="0" max="100" value="100"><span id="peerVolumeValue">100%</span></div>
-    <button id="enableCallSound" class="primary hidden" type="button">Enable sound</button><div class="call-controls"><button id="muteBtn" class="soft">🎙 Mute</button><button id="shareBtn" class="soft">▧ Share screen</button><button id="fullscreenShareBtn" class="soft hidden" type="button">⛶ На весь экран</button><button id="hangupBtn" class="danger">End call</button></div>
-  </div>
+<div id="callModal" class="call-modal hidden" role="dialog" aria-modal="true" aria-label="ViviMess call">
+  <section class="call-window call-window-discord">
+    <header class="call-top call-top-modern">
+      <div class="call-heading"><span class="call-live-dot"></span><div><h3 id="callTitle">Голосовой звонок</h3><small id="callPeerStatus">Подключение…</small></div></div>
+      <span class="call-top-chip">VIVIMESS LIVE</span>
+    </header>
+    <div class="call-stage-wrap">
+      <div class="video-stage audio-stage call-stage-modern">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <video id="localScreenPreview" autoplay muted playsinline></video>
+        <audio id="remoteAudio" autoplay playsinline></audio>
+        <div class="audio-call-avatar"><span>☎</span></div>
+        <div class="call-stage-caption"><div class="call-avatar-mini">☎</div><div><b id="callPeerName">Собеседник</b><small>ViviMess voice</small></div><span class="call-speaking-indicator" aria-label="Голосовой канал активен"><i></i><i></i><i></i></span></div>
+      </div>
+      <div id="callHint" class="call-hint" aria-live="polite"></div>
+    </div>
+    <footer class="call-bottom">
+      <div class="call-volume call-volume-modern"><label for="peerVolume">Громкость</label><input id="peerVolume" type="range" min="0" max="100" value="100"><span id="peerVolumeValue">100%</span></div>
+      <div class="call-controls call-controls-modern">
+        <button id="muteBtn" class="call-control-btn" type="button"><span class="call-control-icon">🎙</span><span>Микрофон</span></button>
+        <button id="shareBtn" class="call-control-btn" type="button"><span class="call-control-icon">▧</span><span>Показать экран</span></button>
+        <button id="fullscreenShareBtn" class="call-control-btn hidden" type="button"><span class="call-control-icon">⛶</span><span>На весь экран</span></button>
+        <button id="hangupBtn" class="call-control-btn call-end-btn" type="button"><span class="call-control-icon">☎</span><span>Завершить</span></button>
+      </div>
+      <button id="enableCallSound" class="primary hidden" type="button">Включить звук</button>
+    </footer>
+  </section>
 </div>
 <div id="paintModal" class="paint-modal hidden"><div class="paint-window"><div class="panel-head"><h3>ViviMess Paint</h3><button id="paintClose" class="soft" type="button">Close</button></div><div class="paint-palette"><div class="paint-palette-title">Цвет кисти</div><div class="paint-swatches"><button type="button" data-paint-color="#28e0b2" style="--swatch:#28e0b2" aria-label="Бирюзовый"></button><button type="button" data-paint-color="#ffffff" style="--swatch:#ffffff" aria-label="Белый"></button><button type="button" data-paint-color="#111827" style="--swatch:#111827" aria-label="Чёрный"></button><button type="button" data-paint-color="#ff5577" style="--swatch:#ff5577" aria-label="Розовый"></button><button type="button" data-paint-color="#ffcc33" style="--swatch:#ffcc33" aria-label="Жёлтый"></button><button type="button" data-paint-color="#4d8dff" style="--swatch:#4d8dff" aria-label="Синий"></button><button type="button" data-paint-color="#9b6bff" style="--swatch:#9b6bff" aria-label="Фиолетовый"></button><label class="paint-custom-color">Свой цвет <input id="paintColor" type="color" value="#28e0b2"></label></div></div><div class="paint-tools"><label class="paint-tool-label">Фон <select id="paintPreset"><option value="solid">Однотонный</option><option value="vivi-navy.jpg">Vivi Navy</option><option value="notebook.jpg">Тетрадь</option><option value="dark-grid.jpg">Тёмная сетка</option><option value="sunset.jpg">Закат</option><option value="mint.jpg">Мята</option><option value="dot-paper.jpg">Точки</option><option value="blueprint.jpg">Чертёж</option><option value="warm-paper.jpg">Бумага</option><option value="galaxy.jpg">Космос</option><option value="emerald-wave.jpg">Изумрудные волны</option><option value="charcoal.jpg">Графит</option></select></label><label class="paint-tool-label">Цвет фона <input id="paintBackground" type="color" value="#ffffff"></label><label class="paint-tool-label">Размер кисти <input id="paintSize" type="range" min="1" max="40" value="5"></label><button id="paintUndo" class="soft" type="button">↶ Отменить</button><button id="paintEraser" class="soft" type="button">Ластик</button><button id="paintClear" class="soft" type="button">Очистить</button><button id="paintSend" class="primary" type="button">Отправить рисунок</button></div><canvas id="paintCanvas" width="900" height="520" aria-label="Paint drawing canvas"></canvas></div></div>
 <div id="toast" class="toast"></div>

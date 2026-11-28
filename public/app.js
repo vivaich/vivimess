@@ -525,8 +525,8 @@ $("audioCall").onclick=()=>{if(activeFriend)startCall(activeFriend.id,"audio",fa
 async function startCall(peer,mode,isAnswer){
   if(!peer||!socket||pc||localStream)return;
   currentCallPeer=peer;callMode="audio";if(!isAnswer)startRingtone("outgoing");$ ("callModal").classList.remove("hidden");
-  $("callTitle").textContent="Voice call";$("callPeerName").textContent=activeFriend?.displayName||"Voice call";$("callPeerStatus").textContent=isAnswer?"Joining call…":"Calling…";$("callHint").textContent=isAnswer?"Connecting…":"Calling…";
-  $("muteBtn").textContent="🎙 Mute";if($("peerVolume")){ $("peerVolume").value=100;$("peerVolumeValue").textContent="100%";}
+  $("callTitle").textContent="Голосовой звонок";$("callPeerName").textContent=activeFriend?.displayName||"Voice call";$("callPeerStatus").textContent=isAnswer?"Подключаемся к звонку…":"Вызов…";$("callHint").textContent=isAnswer?"Подключаемся…":"Вызываем собеседника…";
+  $("muteBtn").innerHTML="<span class=\"call-control-icon\">🎙</span><span>Микрофон</span>";if($("peerVolume")){ $("peerVolume").value=100;$("peerVolumeValue").textContent="100%";}
   try{
     const audioBase={echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:{ideal:2},sampleRate:{ideal:48000}};
     try{localStream=await navigator.mediaDevices.getUserMedia({audio:callPrefs.micId?{...audioBase,deviceId:{exact:callPrefs.micId}}:audioBase,video:false});}
@@ -544,19 +544,19 @@ async function startCall(peer,mode,isAnswer){
         stopRingtone();const audio=$("remoteAudio");audio.autoplay=true;audio.playsInline=true;audio.muted=false;audio.volume=Math.max(0,Math.min(1,Number($("peerVolume")?.value??100)/100));
         audio.srcObject=e.streams?.[0]||new MediaStream([e.track]);
         if(callPrefs.speakerId&&audio.setSinkId){try{await audio.setSinkId(callPrefs.speakerId);}catch(err){console.warn("Audio output selection failed",err);}}
-        try{await audio.play();$("callHint").textContent="Voice connected";}catch(err){$("callHint").textContent="Browser blocked call audio. Press Enable sound.";$("enableCallSound").classList.remove("hidden");}
+        try{await audio.play();$("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";}catch(err){$("callHint").textContent="Браузер заблокировал звук. Нажмите «Включить звук».";$("enableCallSound").classList.remove("hidden");}
       }
       if(e.track.kind==="video"){
         const video=$("remoteVideo");video.autoplay=true;video.playsInline=true;video.muted=true;
         video.srcObject=new MediaStream([e.track]);
-        const show=()=>{video.classList.add("screen-live");$("fullscreenShareBtn")?.classList.remove("hidden");video.play().catch(err=>{console.warn("Remote screen playback failed",err);$("callHint").textContent="Screen received, but playback failed.";});};
-        e.track.onunmute=show;e.track.onmute=()=>{video.classList.remove("screen-live");$("fullscreenShareBtn")?.classList.add("hidden");};
+        const show=()=>{video.classList.add("screen-live");$("callHint").textContent="";$("callPeerStatus").textContent="Собеседник показывает экран";$("fullscreenShareBtn")?.classList.remove("hidden");video.play().catch(err=>{console.warn("Remote screen playback failed",err);$("callHint").textContent="Экран получен, но браузер не смог его воспроизвести.";});};
+        e.track.onunmute=show;e.track.onmute=()=>{video.classList.remove("screen-live");$("fullscreenShareBtn")?.classList.add("hidden");$("callPeerStatus").textContent="Голосовой канал активен";};
         if(e.track.readyState==="live"&&!e.track.muted)show();
       }
     };
     pc.onicecandidate=e=>{if(e.candidate&&currentCallPeer)socket.emit("call:signal",{to:peer,signal:{type:"ice",candidate:e.candidate}});};
-    pc.onconnectionstatechange=()=>{if(!pc)return;const state=pc.connectionState;if(state==="connected"){stopRingtone();$("callHint").textContent="Voice connected";$("callPeerStatus").textContent="Connected · Voice";}else if(state==="connecting"){$("callHint").textContent="Connecting audio…";}else if(state==="disconnected"){$("callHint").textContent="Connection interrupted. Trying to reconnect…";}else if(state==="failed"){$("callHint").textContent="Could not connect. A TURN server may be required for this network.";}};
-    pc.oniceconnectionstatechange=()=>{if(!pc)return;if(pc.iceConnectionState==="failed"){$("callHint").textContent="Network connection failed. Configure TURN in Voice settings and retry.";}else if(pc.iceConnectionState==="checking"){$("callHint").textContent="Finding the best connection…";}};
+    pc.onconnectionstatechange=()=>{if(!pc)return;const state=pc.connectionState;if(state==="connected"){stopRingtone();$("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";}else if(state==="connecting"){$("callPeerStatus").textContent="Подключение…";$("callHint").textContent="Устанавливаем соединение…";}else if(state==="disconnected"){$("callPeerStatus").textContent="Переподключение…";$("callHint").textContent="Связь прервалась. Пытаемся восстановить соединение…";}else if(state==="failed"){$("callPeerStatus").textContent="Нет соединения";$("callHint").textContent="Не удалось подключиться. Для этой сети может понадобиться TURN.";}};
+    pc.oniceconnectionstatechange=()=>{if(!pc)return;if(pc.iceConnectionState==="failed"){$("callHint").textContent="Ошибка сети. Проверьте настройки TURN и повторите звонок.";}else if(pc.iceConnectionState==="checking"){$("callHint").textContent="Подбираем оптимальное соединение…";}};
     if(isAnswer){
       if(incomingOffer){await pc.setRemoteDescription(incomingOffer);for(const c of pendingIce)await pc.addIceCandidate(c);pendingIce=[];const answer=await pc.createAnswer();await pc.setLocalDescription(answer);socket.emit("call:signal",{to:peer,signal:{type:"description",description:pc.localDescription}});incomingOffer=null;}
       // If the offer arrives after the user accepts, handleSignal creates the answer.
@@ -579,18 +579,18 @@ async function handleSignal({from,signal}){
     }
   }catch(e){console.error(e);toast("Call setup error: "+e.message);}
 }
-$("muteBtn").onclick=()=>{if(!localStream)return;const t=localStream.getAudioTracks()[0];if(t){t.enabled=!t.enabled;$("muteBtn").textContent=t.enabled?"🎙 Mute":"🔇 Unmute";}};
+$("muteBtn").onclick=()=>{if(!localStream)return;const t=localStream.getAudioTracks()[0];if(t){t.enabled=!t.enabled;$("muteBtn").innerHTML=t.enabled?"<span class=\"call-control-icon\">🎙</span><span>Микрофон</span>":"<span class=\"call-control-icon\">🔇</span><span>Включить микрофон</span>";$("muteBtn").classList.toggle("is-muted",!t.enabled);}};
 
 $("shareBtn").onclick=async()=>{
   try{
     if(!pc||pc.connectionState!=="connected")throw new Error("Сначала дождись подключения голосового звонка.");
     if(screenStream){
-      const old=screenStream;screenStream=null;
+      const old=screenStream;screenStream=null;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=null;localPreview.classList.remove("screen-live");}
       if(screenSender)await screenSender.replaceTrack(null);
       old.getTracks().forEach(t=>t.stop());
-      $("shareBtn").textContent="▧ Share screen";
+      $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
       $("fullscreenShareBtn")?.classList.add("hidden");
-      $("callHint").textContent="Screen sharing stopped";
+      $("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";
       return;
     }
     if(!window.isSecureContext)throw new Error("Демонстрация экрана доступна только на HTTPS-сайте.");
@@ -605,31 +605,31 @@ $("shareBtn").onclick=async()=>{
     if(videoTransceiver.direction!=="sendrecv")videoTransceiver.direction="sendrecv";
     await screenSender.replaceTrack(track);
     try{const params=screenSender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];params.encodings[0].maxBitrate=4000000;params.encodings[0].maxFramerate=30;params.degradationPreference="maintain-resolution";await screenSender.setParameters(params);}catch(err){console.warn("Could not tune screen quality",err);}
-    screenStream=captured;
-    $("shareBtn").textContent="▧ Stop sharing";
+    screenStream=captured;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=captured;localPreview.classList.add("screen-live");localPreview.play().catch(()=>{});}
+    $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Остановить показ</span>";
     $("fullscreenShareBtn")?.classList.remove("hidden");
-    $("callHint").textContent="You are sharing your screen";
+    $("callHint").textContent="";$("callPeerStatus").textContent="Вы показываете экран";
     track.addEventListener("ended",async()=>{
       try{await screenSender?.replaceTrack(null);}catch(err){console.warn("Could not stop screen sender",err);}
-      if(screenStream===captured)screenStream=null;
-      $("shareBtn").textContent="▧ Share screen";
+      if(screenStream===captured)screenStream=null;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=null;localPreview.classList.remove("screen-live");}
+      $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
       $("fullscreenShareBtn")?.classList.add("hidden");
-      $("callHint").textContent="Screen sharing stopped";
+      $("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";
     },{once:true});
   }catch(e){
     if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
-    $("shareBtn").textContent="▧ Share screen";
+    $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
     $("fullscreenShareBtn")?.classList.add("hidden");
     toast("Демонстрация экрана: "+(e.name==="NotAllowedError"?"доступ отменён или запрещён браузером":e.message));
   }
 };
-$("fullscreenShareBtn").onclick=async()=>{const stage=$("remoteVideo").closest(".video-stage");if(!stage)return;try{if(!document.fullscreenElement){await stage.requestFullscreen();$("fullscreenShareBtn").textContent="⛶ Выйти из полного экрана";}else{await document.exitFullscreen();$("fullscreenShareBtn").textContent="⛶ На весь экран";}}catch(e){toast("Полный экран недоступен: "+e.message);}};
-document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&$("fullscreenShareBtn"))$("fullscreenShareBtn").textContent="⛶ На весь экран";});
+$("fullscreenShareBtn").onclick=async()=>{const stage=$("remoteVideo").closest(".video-stage");if(!stage)return;try{if(!document.fullscreenElement){await stage.requestFullscreen();$("fullscreenShareBtn").innerHTML="<span class=\"call-control-icon\">⛶</span><span>Выйти из полного экрана</span>";}else{await document.exitFullscreen();$("fullscreenShareBtn").innerHTML="<span class=\"call-control-icon\">⛶</span><span>На весь экран</span>";}}catch(e){toast("Полный экран недоступен: "+e.message);}};
+document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&$("fullscreenShareBtn"))$("fullscreenShareBtn").innerHTML="<span class=\"call-control-icon\">⛶</span><span>На весь экран</span>";});
 $("hangupBtn").onclick=()=>endCall(true);
 function endCall(notify){
   if(notify&&currentCallPeer&&socket)socket.emit("call:end",{to:currentCallPeer});
-  stopRingtone();if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}screenSender=null;if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
-  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("remoteAudio").srcObject=null;$("shareBtn").textContent="▧ Share screen";$("fullscreenShareBtn")?.classList.add("hidden");if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});$("callModal").classList.add("hidden");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
+  stopRingtone();if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=null;localPreview.classList.remove("screen-live");}screenSender=null;if(pc){pc.close();pc=null;}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
+  $("remoteVideo").srcObject=null;$("remoteVideo").classList.remove("screen-live");$("remoteAudio").srcObject=null;$("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";$("fullscreenShareBtn")?.classList.add("hidden");if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});$("callModal").classList.add("hidden");$("callModal").classList.remove("call-minimized");$("callHint").classList.remove("hidden");$("incomingCallModal").classList.add("hidden");currentCallPeer=null;incomingOffer=null;pendingIce=[];pendingIncomingCall=null;
 }
 $("designForm").onsubmit=async e=>{
   e.preventDefault();try{
