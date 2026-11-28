@@ -239,6 +239,19 @@ vm.setTheme({accent:"#28e0b2"});'></textarea>
     </div>
   </div>
 </div>
+<div id="screenPickerModal" class="screen-picker-modal hidden" role="dialog" aria-modal="true" aria-labelledby="screenPickerTitle">
+  <div class="screen-picker-card">
+    <div class="screen-picker-kicker">VIVIMESS LIVE</div>
+    <h3 id="screenPickerTitle">Что будем показывать?</h3>
+    <p>Выбери тип демонстрации. Затем Chrome откроет системное окно выбора источника.</p>
+    <div class="screen-picker-options">
+      <button type="button" class="screen-picker-option" data-screen-surface="monitor"><span class="screen-picker-symbol">▣</span><b>Весь экран</b><small>Рабочий стол и все окна</small></button>
+      <button type="button" class="screen-picker-option" data-screen-surface="window"><span class="screen-picker-symbol">▱</span><b>Окно</b><small>Отдельная программа</small></button>
+      <button type="button" class="screen-picker-option" data-screen-surface="browser"><span class="screen-picker-symbol">▤</span><b>Вкладка</b><small>Вкладка браузера</small></button>
+    </div>
+    <button id="screenPickerCancel" class="screen-picker-cancel" type="button">Отмена</button>
+  </div>
+</div>
 <div id="callModal" class="call-modal hidden" role="dialog" aria-modal="true" aria-label="ViviMess call">
   <section class="call-window call-window-discord">
     <header class="call-top call-top-modern">

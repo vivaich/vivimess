@@ -548,7 +548,7 @@ async function startCall(peer,mode,isAnswer){
       }
       if(e.track.kind==="video"){
         const video=$("remoteVideo");video.autoplay=true;video.playsInline=true;video.muted=true;
-        video.srcObject=new MediaStream([e.track]);
+        video.srcObject=e.streams?.[0]||new MediaStream([e.track]);
         const show=()=>{video.classList.add("screen-live");$("callHint").textContent="";$("callPeerStatus").textContent="Собеседник показывает экран";$("fullscreenShareBtn")?.classList.remove("hidden");video.play().catch(err=>{console.warn("Remote screen playback failed",err);$("callHint").textContent="Экран получен, но браузер не смог его воспроизвести.";});};
         e.track.onunmute=show;e.track.onmute=()=>{video.classList.remove("screen-live");$("fullscreenShareBtn")?.classList.add("hidden");$("callPeerStatus").textContent="Голосовой канал активен";};
         if(e.track.readyState==="live"&&!e.track.muted)show();
@@ -582,47 +582,40 @@ async function handleSignal({from,signal}){
 $("muteBtn").onclick=()=>{if(!localStream)return;const t=localStream.getAudioTracks()[0];if(t){t.enabled=!t.enabled;$("muteBtn").innerHTML=t.enabled?"<span class=\"call-control-icon\">🎙</span><span>Микрофон</span>":"<span class=\"call-control-icon\">🔇</span><span>Включить микрофон</span>";$("muteBtn").classList.toggle("is-muted",!t.enabled);}};
 
 $("shareBtn").onclick=async()=>{
+  if(!pc||pc.connectionState!=="connected"){toast("Сначала дождись подключения голосового звонка.");return;}
+  if(screenStream){
+    const old=screenStream;screenStream=null;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=null;localPreview.classList.remove("screen-live");}
+    try{await screenSender?.replaceTrack(null);}catch(err){console.warn("Could not detach screen track",err);}
+    old.getTracks().forEach(t=>t.stop());
+    $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
+    $("fullscreenShareBtn")?.classList.add("hidden");$("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";return;
+  }
+  if(!window.isSecureContext){toast("Демонстрация экрана доступна только на HTTPS-сайте.");return;}
+  if(!navigator.mediaDevices?.getDisplayMedia){toast("Браузер не поддерживает демонстрацию. Используй актуальный Chrome или Edge.");return;}
+  $("screenPickerModal").classList.remove("hidden");
+};
+$("screenPickerCancel").onclick=()=>$("screenPickerModal").classList.add("hidden");
+async function beginScreenShare(surface){
+  $("screenPickerModal").classList.add("hidden");
   try{
-    if(!pc||pc.connectionState!=="connected")throw new Error("Сначала дождись подключения голосового звонка.");
-    if(screenStream){
-      const old=screenStream;screenStream=null;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=null;localPreview.classList.remove("screen-live");}
-      if(screenSender)await screenSender.replaceTrack(null);
-      old.getTracks().forEach(t=>t.stop());
-      $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
-      $("fullscreenShareBtn")?.classList.add("hidden");
-      $("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";
-      return;
-    }
-    if(!window.isSecureContext)throw new Error("Демонстрация экрана доступна только на HTTPS-сайте.");
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)throw new Error("Браузер не поддерживает демонстрацию. Открой сайт в актуальном Chrome или Edge.");
-    // getDisplayMedia must be called directly from this click handler.
-    const captured=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:30},width:{ideal:1920},height:{ideal:1080}},audio:false});
-    const track=captured.getVideoTracks()[0];
-    if(!track)throw new Error("Браузер не вернул видеопоток экрана.");
-    const videoTransceiver=pc.getTransceivers().find(t=>t.sender===screenSender)||pc.getTransceivers().find(t=>t.receiver?.track?.kind==="video");
-    if(!videoTransceiver)throw new Error("Не найден согласованный видеоканал. Заверши звонок и начни новый после обновления страницы у обоих участников.");
-    screenSender=videoTransceiver.sender;
-    if(videoTransceiver.direction!=="sendrecv")videoTransceiver.direction="sendrecv";
+    // The browser's native picker remains mandatory; displaySurface is a preference, not a restriction.
+    const options={video:{displaySurface:surface,frameRate:{ideal:30,max:30},width:{ideal:1920},height:{ideal:1080}},audio:false};
+    if(surface==="browser")options.preferCurrentTab=true;
+    const captured=await navigator.mediaDevices.getDisplayMedia(options);
+    const track=captured.getVideoTracks()[0];if(!track)throw new Error("Браузер не вернул видеопоток экрана.");
+    const transceiver=pc?.getTransceivers().find(t=>t.sender===screenSender)||pc?.getTransceivers().find(t=>t.receiver?.track?.kind==="video");
+    if(!transceiver)throw new Error("Видеоканал не согласован. Заверши звонок, обнови страницу у обоих участников и позвони снова.");
+    screenSender=transceiver.sender;
+    if(transceiver.currentDirection&&transceiver.currentDirection!=="sendrecv"&&transceiver.currentDirection!=="sendonly")throw new Error("Собеседник не согласовал приём видео. Обновите ViviMess у обоих участников и начните новый звонок.");
     await screenSender.replaceTrack(track);
     try{const params=screenSender.getParameters();params.encodings=params.encodings?.length?params.encodings:[{}];params.encodings[0].maxBitrate=4000000;params.encodings[0].maxFramerate=30;params.degradationPreference="maintain-resolution";await screenSender.setParameters(params);}catch(err){console.warn("Could not tune screen quality",err);}
     screenStream=captured;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=captured;localPreview.classList.add("screen-live");localPreview.play().catch(()=>{});}
     $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Остановить показ</span>";
-    $("fullscreenShareBtn")?.classList.remove("hidden");
-    $("callHint").textContent="";$("callPeerStatus").textContent="Вы показываете экран";
-    track.addEventListener("ended",async()=>{
-      try{await screenSender?.replaceTrack(null);}catch(err){console.warn("Could not stop screen sender",err);}
-      if(screenStream===captured)screenStream=null;const localPreview=$("localScreenPreview");if(localPreview){localPreview.srcObject=null;localPreview.classList.remove("screen-live");}
-      $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
-      $("fullscreenShareBtn")?.classList.add("hidden");
-      $("callHint").textContent="";$("callPeerStatus").textContent="Голосовой канал активен";
-    },{once:true});
-  }catch(e){
-    if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}
-    $("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";
-    $("fullscreenShareBtn")?.classList.add("hidden");
-    toast("Демонстрация экрана: "+(e.name==="NotAllowedError"?"доступ отменён или запрещён браузером":e.message));
-  }
-};
+    $("fullscreenShareBtn")?.classList.remove("hidden");$("callHint").textContent="";$("callPeerStatus").textContent="Вы показываете экран";
+    track.addEventListener("ended",async()=>{try{await screenSender?.replaceTrack(null);}catch(err){console.warn("Could not stop screen sender",err);}if(screenStream===captured)screenStream=null;const preview=$("localScreenPreview");if(preview){preview.srcObject=null;preview.classList.remove("screen-live");}$("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";$("fullscreenShareBtn")?.classList.add("hidden");$("callPeerStatus").textContent="Голосовой канал активен";},{once:true});
+  }catch(e){if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;}$("shareBtn").innerHTML="<span class=\"call-control-icon\">▧</span><span>Показать экран</span>";$("fullscreenShareBtn")?.classList.add("hidden");if(e.name!=="AbortError"&&e.name!=="NotAllowedError")toast("Демонстрация экрана: "+e.message);else toast("Выбор демонстрации отменён.");}
+}
+document.querySelectorAll("[data-screen-surface]").forEach(button=>button.addEventListener("click",()=>beginScreenShare(button.dataset.screenSurface)));
 $("fullscreenShareBtn").onclick=async()=>{const stage=$("remoteVideo").closest(".video-stage");if(!stage)return;try{if(!document.fullscreenElement){await stage.requestFullscreen();$("fullscreenShareBtn").innerHTML="<span class=\"call-control-icon\">⛶</span><span>Выйти из полного экрана</span>";}else{await document.exitFullscreen();$("fullscreenShareBtn").innerHTML="<span class=\"call-control-icon\">⛶</span><span>На весь экран</span>";}}catch(e){toast("Полный экран недоступен: "+e.message);}};
 document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&$("fullscreenShareBtn"))$("fullscreenShareBtn").innerHTML="<span class=\"call-control-icon\">⛶</span><span>На весь экран</span>";});
 $("hangupBtn").onclick=()=>endCall(true);

@@ -375,3 +375,20 @@ button,input,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit;
 .call-stage-modern #localScreenPreview.screen-live{display:block!important}
 .call-stage-modern:has(#localScreenPreview.screen-live) .audio-call-avatar,.call-stage-modern:has(#localScreenPreview.screen-live) .call-stage-caption{display:none!important}
 .call-stage-modern:fullscreen #localScreenPreview.screen-live{display:block!important;object-fit:contain!important}
+
+
+/* ViviMess screen-source chooser */
+.screen-picker-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:18px;background:rgba(2,7,13,.82);backdrop-filter:blur(16px)}
+.screen-picker-modal.hidden{display:none}
+.screen-picker-card{width:min(620px,100%);padding:28px;background:linear-gradient(145deg,#1b3044,#101b29);border:1px solid #3c5a70;border-radius:24px;box-shadow:0 28px 90px #000b;color:#edf7ff}
+.screen-picker-kicker{font-size:10px;letter-spacing:2px;font-weight:1000;color:#48dfbd}
+.screen-picker-card h3{font-size:25px;margin:9px 0 7px}
+.screen-picker-card p{font-size:13px;line-height:1.5;color:#aebfd0;margin:0 0 20px}
+.screen-picker-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.screen-picker-option{min-height:145px;padding:17px 12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#20364b;border:1px solid #3a566e;border-radius:17px;color:#edf7ff;cursor:pointer;transition:.16s}
+.screen-picker-option:hover{transform:translateY(-3px);border-color:#38dfba;background:#23485a;box-shadow:0 10px 30px #20d9b522}
+.screen-picker-symbol{font-size:34px;line-height:1;color:#55e4c1}
+.screen-picker-option b{font-size:14px}
+.screen-picker-option small{font-size:11px;color:#aebfd0;text-align:center}
+.screen-picker-cancel{display:block;margin:18px 0 0 auto;padding:10px 18px;border-radius:11px;border:1px solid #425970;background:#172638;color:#dceafa;cursor:pointer}
+@media(max-width:560px){.screen-picker-card{padding:20px}.screen-picker-options{grid-template-columns:1fr}.screen-picker-option{min-height:85px;display:grid;grid-template-columns:45px 1fr;justify-items:start;text-align:left;padding:12px 16px}.screen-picker-symbol{grid-row:span 2}.screen-picker-option small{text-align:left}}
