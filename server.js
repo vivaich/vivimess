@@ -14,6 +14,12 @@ const SECRET = process.env.JWT_SECRET || "CHANGE_THIS_SECRET_BEFORE_PUBLIC_DEPLO
 const DATA_DIR = process.env.DATA_DIR || __dirname;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_FILE = path.join(DATA_DIR, "data.json");
+const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
+const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_SECRET_KEY);
+if ((SUPABASE_URL && !SUPABASE_SECRET_KEY) || (!SUPABASE_URL && SUPABASE_SECRET_KEY)) {
+  throw new Error("Set both SUPABASE_URL and SUPABASE_SECRET_KEY, or leave both unset.");
+}
 
 app.use(express.json({ limit: "24mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -80,15 +86,62 @@ async function seedAdmin() {
   }
   save();
 }
+let persistenceQueue = Promise.resolve();
 function save() {
-  const temp = DB_FILE + ".tmp";
-  const backup = DB_FILE + ".bak";
-  const serialized = JSON.stringify(db, null, 2);
-  // Keep a last-known-good copy and use atomic rename so a restart cannot
-  // leave a half-written database if the process stops during a save.
-  if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, backup);
-  fs.writeFileSync(temp, serialized, { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(temp, DB_FILE);
+  const snapshot = JSON.parse(JSON.stringify(db));
+  const serialized = JSON.stringify(snapshot, null, 2);
+  // Keep local development working, with an atomic file write as a fallback.
+  const writeLocal = () => {
+    const temp = DB_FILE + ".tmp";
+    const backup = DB_FILE + ".bak";
+    if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, backup);
+    fs.writeFileSync(temp, serialized, { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(temp, DB_FILE);
+  };
+  if (!SUPABASE_ENABLED) {
+    writeLocal();
+    return Promise.resolve();
+  }
+  // Serialize writes so a slower earlier request cannot overwrite newer data.
+  persistenceQueue = persistenceQueue.catch(() => {}).then(async () => {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/vm_data?on_conflict=id`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_SECRET_KEY,
+        "Authorization": `Bearer ${SUPABASE_SECRET_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify({ id: "main", data: snapshot, updated_at: new Date().toISOString() })
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Supabase save failed (${response.status}): ${detail.slice(0, 500)}`);
+    }
+  }).catch(err => {
+    console.error("PERSISTENCE ERROR: Supabase could not save ViviMess data:", err.message);
+    // Do not silently switch to local storage: cloud persistence remains visibly in an error state.
+  });
+  return persistenceQueue;
+}
+async function loadFromSupabase() {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/vm_data?id=eq.main&select=data`, {
+    headers: { "apikey": SUPABASE_SECRET_KEY, "Authorization": `Bearer ${SUPABASE_SECRET_KEY}` }
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Supabase load failed (${response.status}): ${detail.slice(0, 500)}`);
+  }
+  const rows = await response.json();
+  if (!Array.isArray(rows)) throw new Error("Supabase returned an unexpected database response.");
+  if (rows.length) {
+    const remote = rows[0]?.data;
+    if (!remote || typeof remote !== "object" || Array.isArray(remote)) throw new Error("Supabase vm_data row contains invalid data.");
+    db = { ...db, ...remote };
+    console.log("ViviMess data loaded from Supabase.");
+  } else {
+    console.log("No cloud database row found yet; initializing a new ViviMess database.");
+  }
 }
 function tokenFor(user) {
   return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: "7d" });
@@ -511,9 +564,12 @@ io.on("connection", socket => {
   });
 });
 
-seedAdmin().then(() => {
-  server.listen(PORT, () => console.log(`ViviMess is running at http://localhost:${PORT}`));
-}).catch(err => {
+(async () => {
+  if (SUPABASE_ENABLED) await loadFromSupabase();
+  await seedAdmin();
+  if (SUPABASE_ENABLED) await persistenceQueue;
+  server.listen(PORT, () => console.log(`ViviMess is running at http://localhost:${PORT}${SUPABASE_ENABLED ? " (Supabase persistence enabled)" : " (local file storage)"}`));
+})().catch(err => {
   console.error("Could not initialize ViviMess:", err);
   process.exit(1);
 });
